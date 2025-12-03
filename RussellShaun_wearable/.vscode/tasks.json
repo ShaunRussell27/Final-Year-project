@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Garmin App",
+      "type": "shell",
+      "command": "monkeyc.bat",
+      "args": [
+        "-f",
+        "monkey.jungle",
+        "-o",
+        "bin/app.prg"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Run Garmin App",
+      "type": "shell",
+      "command": "monkeydo.bat",
+      "args": [
+        "bin/app.prg",
+        "venuSq"
+      ]
+    }
+  ]
+}

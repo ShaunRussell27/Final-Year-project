@@ -1,0 +1,20 @@
+{
+  "app_title": "My Garmin App",
+  "welcome_message": "Welcome to My Garmin App!",
+  "error_message": "An error has occurred. Please try again.",
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "notifications": "Notifications"
+  },
+  "buttons": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "retry": "Retry"
+  },
+  "labels": {
+    "username": "Username",
+    "password": "Password",
+    "login": "Login"
+  }
+}

@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Monkey C App",
+            "type": "monkeyc",
+            "request": "launch",
+            "program": "${workspaceFolder}/source/App.mc",
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "args": [],
+            "env": {},
+            "console": "integratedTerminal"
+        }
+    ]
+}
