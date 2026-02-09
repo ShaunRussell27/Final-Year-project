@@ -1,14 +1,115 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Burnout Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Burnout Detection</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Burnout Detection Report</h1>
+    <div class="container">
+        <div class="header">
+            <h1>AI Burnout Detection System (final Year-Project)</h1>
+            <p>Monitor your well-being with AI-powered insights</p>
+        </div>
 
-    <p>Latest Heart Rate: <span id="hr">--</span></p>
-    <p>Latest Stress: n <span id="stress">--</span></p>
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-btn active" data-tab="home">🏠 Home</button>
+            <a href="chatbot.html" class="tab-btn-link">💬 Chatbot</a>
+            <button class="tab-btn" data-tab="burnout">🧠 Burnout Detection</button>
+        </div>
+
+        <div class="main-content">
+            <!-- Home Tab -->
+            <div id="home" class="tab-content active">
+                <div class="home-section">
+                    <h2>Welcome to the AI Burnout Detection System</h2>
+                    <p>This platform helps you monitor your well-being and identify burnout risks early.</p>
+                    
+                    <div class="features">
+                        <div class="feature-card">
+                            <div class="feature-icon">📊</div>
+                            <h3>Track Metrics</h3>
+                            <p>Monitor sleep, heart rate variability, activity levels, and stress.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🤖</div>
+                            <h3>AI Analysis</h3>
+                            <p>Get instant burnout risk assessment powered by machine learning.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">💡</div>
+                            <h3>Personalized Tips</h3>
+                            <p>Receive tailored recommendations based on your health data.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">💬</div>
+                            <h3>AI Chatbot</h3>
+                            <p>Chat with our AI assistant for wellness advice anytime.</p>
+                        </div>
+                    </div>
+
+                    <div class="info-box">
+                        <h3>How It Works</h3>
+                        <ol>
+                            <li>Enter your health metrics in the Burnout Detection tab</li>
+                            <li>Our AI analyzes your data using machine learning</li>
+                            <li>Get your burnout risk level (Low, Moderate, or High)</li>
+                            <li>Receive personalized recommendations for improvement</li>
+                            <li>Chat with our AI assistant for wellness support</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Burnout Detection Tab -->
+            <div id="burnout" class="tab-content">
+                <div class="form-section">
+                    <h2>Enter Your Health Metrics</h2>
+                    <form id="burnoutForm">
+                    <div class="form-group">
+                        <label for="sleep">Average Sleep Hours (per night):</label>
+                        <input type="number" id="sleep" min="0" max="12" step="0.5" value="7" required>
+                        <span class="help-text">Recommended: 7-9 hours</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="hrv">Heart Rate Variability (HRV):</label>
+                        <input type="number" id="hrv" min="0" max="200" step="1" value="50" required>
+                        <span class="help-text">Higher HRV indicates better recovery</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="steps">Daily Steps:</label>
+                        <input type="number" id="steps" min="0" max="50000" step="100" value="5000" required>
+                        <span class="help-text">Recommended: 8000+ steps</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="work_hours">Work Hours per Day:</label>
+                        <input type="number" id="work_hours" min="0" max="24" step="0.5" value="8" required>
+                        <span class="help-text">Recommended: 8 hours</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="stress_level">Stress Level (1-10):</label>
+                        <input type="range" id="stress_level" min="1" max="10" value="5">
+                        <span id="stressValue">5</span>/10
+                    </div>
+
+                        <button type="submit" class="btn-analyze">Analyze Burnout Risk</button>
+                    </form>
+
+                    <div class="result-section" id="resultSection" style="display:none;">
+                        <h2>Burnout Risk Assessment</h2>
+                        <div id="resultBox" class="result-box"></div>
+                        <div id="recommendations" class="recommendations"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>

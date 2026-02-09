@@ -2,16 +2,19 @@
 <iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3.2.0">
   <iq:application
     id="12345678-1234-1234-1234-123456789abc"
-    type="app"
-    name="MyFirstGarminApp"
-    entry="MyFirstGarminApp"
+    type="watch-app"
+    name="BurnoutDetection"
+    entry="App"
     minSdkVersion="3.1.0">
 
     <iq:permissions>
       <iq:permission>Positioning</iq:permission>
       <iq:permission>SensorHistory</iq:permission>
+      <iq:permission>SensorControl</iq:permission>
+      <iq:permission>Health</iq:permission>
     </iq:permissions>
 
   </iq:application>
 </iq:manifest>
+
 
