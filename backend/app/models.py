@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, DateTime, Integer, Float, Text, func
+from sqlalchemy import String, DateTime, Integer, Float, func
 
 class Base(DeclarativeBase):
     pass
@@ -19,5 +19,3 @@ class DailySummary(Base):
     resting_hr: Mapped[float | None] = mapped_column(Float, nullable=True)
     avg_hr: Mapped[float | None] = mapped_column(Float, nullable=True)
     hr_samples_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-    raw_note: Mapped[str | None] = mapped_column(Text, nullable=True)  # e.g., filename, parse notes

@@ -6,6 +6,10 @@ __pycache__/
 # Environment variables
 .env
 
+# Local backend runtime files
+backend/burnout.db
+backend/app/artifacts/*.joblib
+
 # Xcode junk
 DerivedData/
 build/

@@ -24,4 +24,11 @@ class DailySummaryOut(BaseModel):
     resting_hr: Optional[float] = None
     avg_hr: Optional[float] = None
     hr_samples_count: Optional[int] = None
-    raw_note: Optional[str] = None
+
+
+class RiskOut(BaseModel):
+    user_id: str
+    date: str
+    risk_label: str
+    risk_score: int
+    explanation: list[str]

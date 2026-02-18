@@ -1,0 +1,123 @@
+import os
+from dataclasses import dataclass
+from typing import Optional
+
+import joblib
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+
+from .models import DailySummary
+
+
+@dataclass
+class ModelPrediction:
+    risk_score: int
+    risk_label: str
+    explanation: list[str]
+
+
+class BurnoutModelService:
+    def __init__(self, artifact_path: Optional[str] = None):
+        base_dir = os.path.dirname(__file__)
+        self.artifact_path = artifact_path or os.path.join(base_dir, "artifacts", "burnout_iforest.joblib")
+        self.model: Optional[IsolationForest] = None
+        self.feature_names: list[str] = [
+            "sleep_ratio",
+            "resting_hr_delta",
+            "steps_ratio",
+            "avg_hr_delta",
+        ]
+        self.score_min: Optional[float] = None
+        self.score_max: Optional[float] = None
+
+    @property
+    def is_ready(self) -> bool:
+        return self.model is not None
+
+    def load(self) -> bool:
+        if not os.path.exists(self.artifact_path):
+            return False
+
+        payload = joblib.load(self.artifact_path)
+        self.model = payload.get("model")
+        self.feature_names = payload.get("feature_names", self.feature_names)
+        self.score_min = payload.get("score_min")
+        self.score_max = payload.get("score_max")
+        return self.model is not None
+
+    def predict(self, latest: DailySummary, baseline_rows: list[DailySummary]) -> Optional[ModelPrediction]:
+        if not self.is_ready:
+            return None
+
+        features, explanation = self._build_features_and_explanations(latest, baseline_rows)
+        features_df = pd.DataFrame([features], columns=self.feature_names)
+        score = float(self.model.decision_function(features_df)[0])
+        risk_score = self._score_to_risk(score)
+
+        if risk_score >= 70:
+            risk_label = "High"
+        elif risk_score >= 40:
+            risk_label = "Medium"
+        else:
+            risk_label = "Low"
+
+        if not explanation:
+            explanation = ["no major negative deviation versus baseline detected"]
+
+        return ModelPrediction(
+            risk_score=risk_score,
+            risk_label=risk_label,
+            explanation=explanation,
+        )
+
+    def _avg(self, values: list[float | int | None]) -> Optional[float]:
+        numeric = [float(v) for v in values if v is not None]
+        if not numeric:
+            return None
+        return sum(numeric) / len(numeric)
+
+    def _build_features_and_explanations(
+        self,
+        latest: DailySummary,
+        baseline_rows: list[DailySummary],
+    ) -> tuple[list[float], list[str]]:
+        baseline_sleep = self._avg([r.sleep_minutes for r in baseline_rows])
+        baseline_resting_hr = self._avg([r.resting_hr for r in baseline_rows])
+        baseline_steps = self._avg([r.steps for r in baseline_rows])
+        baseline_avg_hr = self._avg([r.avg_hr for r in baseline_rows])
+
+        explanation: list[str] = []
+
+        sleep_ratio = 1.0
+        if latest.sleep_minutes is not None and baseline_sleep and baseline_sleep > 0:
+            sleep_ratio = float(latest.sleep_minutes / baseline_sleep)
+            if sleep_ratio < 0.85:
+                explanation.append("sleep is below 7-day baseline")
+
+        resting_hr_delta = 0.0
+        if latest.resting_hr is not None and baseline_resting_hr is not None:
+            resting_hr_delta = float(latest.resting_hr - baseline_resting_hr)
+            if resting_hr_delta >= 4:
+                explanation.append("resting heart rate is above baseline")
+
+        steps_ratio = 1.0
+        if latest.steps is not None and baseline_steps and baseline_steps > 0:
+            steps_ratio = float(latest.steps / baseline_steps)
+            if steps_ratio < 0.75:
+                explanation.append("steps are below baseline")
+
+        avg_hr_delta = 0.0
+        if latest.avg_hr is not None and baseline_avg_hr is not None:
+            avg_hr_delta = float(latest.avg_hr - baseline_avg_hr)
+
+        features = [sleep_ratio, resting_hr_delta, steps_ratio, avg_hr_delta]
+        return features, explanation
+
+    def _score_to_risk(self, score: float) -> int:
+        if self.score_min is None or self.score_max is None or self.score_max == self.score_min:
+            return 50
+
+        normalized = (score - self.score_min) / (self.score_max - self.score_min)
+        risk = (1.0 - normalized) * 100.0
+        risk = max(0.0, min(100.0, risk))
+        return int(round(risk))

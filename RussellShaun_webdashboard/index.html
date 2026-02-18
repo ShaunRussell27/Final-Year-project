@@ -15,9 +15,9 @@
 
         <!-- Tab Navigation -->
         <div class="tab-nav">
-            <button class="tab-btn active" data-tab="home">🏠 Home</button>
+            <button type="button" class="tab-btn active" data-tab="home">🏠 Home</button>
             <a href="chatbot.html" class="tab-btn-link">💬 Chatbot</a>
-            <button class="tab-btn" data-tab="burnout">🧠 Burnout Detection</button>
+            <button type="button" class="tab-btn" data-tab="burnout">🧠 Burnout Detection</button>
         </div>
 
         <div class="main-content">
@@ -66,18 +66,24 @@
             <!-- Burnout Detection Tab -->
             <div id="burnout" class="tab-content">
                 <div class="form-section">
-                    <h2>Enter Your Health Metrics</h2>
-                    <form id="burnoutForm">
+                    <h2>Get Burnout Summary (FastAPI Backend)</h2>
+                    <div id="burnoutForm">
                     <div class="form-group">
-                        <label for="sleep">Average Sleep Hours (per night):</label>
-                        <input type="number" id="sleep" min="0" max="12" step="0.5" value="7" required>
-                        <span class="help-text">Recommended: 7-9 hours</span>
+                        <label for="user_id">User ID:</label>
+                        <input type="text" id="user_id" value="demo-user" required>
+                        <span class="help-text">Use the same user_id uploaded from iOS app</span>
                     </div>
 
                     <div class="form-group">
-                        <label for="hrv">Heart Rate Variability (HRV):</label>
-                        <input type="number" id="hrv" min="0" max="200" step="1" value="50" required>
-                        <span class="help-text">Higher HRV indicates better recovery</span>
+                        <label for="sleep">Sleep Hours (optional manual upload):</label>
+                        <input type="number" id="sleep" min="0" max="12" step="0.5" value="7">
+                        <span class="help-text">If you click Analyze, this can be uploaded first as a daily summary</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="resting_hr">Resting Heart Rate (optional):</label>
+                        <input type="number" id="resting_hr" min="30" max="120" step="1" value="60">
+                        <span class="help-text">Used for manual summary upload if iOS data is not available</span>
                     </div>
 
                     <div class="form-group">
@@ -87,19 +93,20 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="work_hours">Work Hours per Day:</label>
-                        <input type="number" id="work_hours" min="0" max="24" step="0.5" value="8" required>
-                        <span class="help-text">Recommended: 8 hours</span>
+                        <label for="avg_hr">Average HR (optional):</label>
+                        <input type="number" id="avg_hr" min="30" max="180" step="1" value="75">
+                        <span class="help-text">Used for manual summary upload</span>
                     </div>
 
                     <div class="form-group">
-                        <label for="stress_level">Stress Level (1-10):</label>
-                        <input type="range" id="stress_level" min="1" max="10" value="5">
-                        <span id="stressValue">5</span>/10
+                        <label for="backend_url">Backend URL:</label>
+                        <input type="text" id="backend_url" value="http://127.0.0.1:8000" required>
+                        <span class="help-text">Change to Railway URL when deployed</span>
                     </div>
 
-                        <button type="submit" class="btn-analyze">Analyze Burnout Risk</button>
-                    </form>
+                        <button type="button" id="analyzeBtn" class="btn-analyze" onclick="window.runBurnoutAnalysis && window.runBurnoutAnalysis(event)">Analyze Burnout Risk</button>
+                        <span id="debugStatus" class="help-text">Status: idle</span>
+                    </div>
 
                     <div class="result-section" id="resultSection" style="display:none;">
                         <h2>Burnout Risk Assessment</h2>
@@ -111,6 +118,6 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=20260218"></script>
 </body>
 </html>

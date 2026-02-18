@@ -1,0 +1,14 @@
+{
+  "liveServer.settings.ignoreFiles": [
+    "**/.vscode/**",
+    "**/.git/**",
+    "**/backend/**/*.db",
+    "**/backend/app/artifacts/**",
+    "**/__pycache__/**"
+  ],
+  "files.watcherExclude": {
+    "**/backend/**/*.db": true,
+    "**/backend/app/artifacts/**": true,
+    "**/__pycache__/**": true
+  }
+}

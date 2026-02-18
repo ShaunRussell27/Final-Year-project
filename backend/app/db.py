@@ -13,18 +13,22 @@ def _make_db_url() -> str:
     """
     url = os.environ.get("DATABASE_URL")
     if not url:
-        # Local dev fallback (create your own local postgres or use Railway dev env)
-        return "postgresql://postgres:postgres@localhost:5432/postgres"
+        # Local dev fallback to SQLite so setup is zero-config on Windows/macOS/Linux.
+        return "sqlite:///./burnout.db"
 
     url = url.replace("postgres://", "postgresql://", 1)
-    if "sslmode=" not in url:
+    if "sslmode=" not in url and url.startswith("postgresql://"):
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}sslmode=require"
     return url
 
 DATABASE_URL = _make_db_url()
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+engine_kwargs = {"pool_pre_ping": True}
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 def get_db():
