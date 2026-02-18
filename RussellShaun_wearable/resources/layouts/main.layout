@@ -1,9 +1,0 @@
-<layout>
-    <view id="mainView" class="MainView">
-        <title>My Garmin App</title>
-        <content>
-            <label id="welcomeLabel" text="Welcome to My Garmin App!" />
-            <button id="startButton" text="Start" />
-        </content>
-    </view>
-</layout>
