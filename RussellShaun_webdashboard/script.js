@@ -46,8 +46,10 @@ if (burnoutForm) {
 
 window.runBurnoutAnalysis = async (e) => {
         setStatus('analyzing...');
+    if (e) {
         e.preventDefault();
         e.stopPropagation();
+    }
 
         activateTab('burnout');
 
@@ -80,16 +82,21 @@ window.runBurnoutAnalysis = async (e) => {
             hr_samples_count: null,
         };
 
-            await fetch(`${backendUrl}/ingest/healthkit`, {
+            const ingestResponse = await fetch(`${backendUrl}/ingest/healthkit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(ingestPayload)
             });
+            if (!ingestResponse.ok) {
+                const body = await ingestResponse.text();
+                throw new Error(`Ingest failed (${ingestResponse.status})${body ? `: ${body}` : ''}`);
+            }
 
             setStatus('requesting risk');
             const riskResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(userId)}`);
             if (!riskResponse.ok) {
-                throw new Error('Failed to get risk summary from backend');
+                const body = await riskResponse.text();
+                throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
             }
 
             const riskResult = await riskResponse.json();
@@ -113,10 +120,6 @@ window.runBurnoutAnalysis = async (e) => {
 
         return false;
     };
-
-if (analyzeBtn) {
-    analyzeBtn.addEventListener('click', window.runBurnoutAnalysis);
-}
 
 function showError(message) {
     const resultSection = document.getElementById('resultSection');

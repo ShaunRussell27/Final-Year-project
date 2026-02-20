@@ -30,8 +30,20 @@ def health():
     return {"status": "ok"}
 
 def upsert_daily_summary(db: Session, user_id: str, date: str, source: str, **fields):
-    # If there is an existing record for this user+date, keep the higher-priority source.
-    existing = db.query(DailySummary).filter(DailySummary.user_id == user_id, DailySummary.date == date).one_or_none()
+    # If there are existing records for this user+date, keep one canonical row.
+    # This gracefully handles accidental duplicates from earlier runs/races.
+    matches = (
+        db.query(DailySummary)
+        .filter(DailySummary.user_id == user_id, DailySummary.date == date)
+        .order_by(DailySummary.id.desc())
+        .all()
+    )
+
+    existing = matches[0] if matches else None
+    if len(matches) > 1:
+        for duplicate in matches[1:]:
+            db.delete(duplicate)
+
     if existing:
         existing_pri = SOURCE_PRIORITY.index(existing.source) if existing.source in SOURCE_PRIORITY else 999
         new_pri = SOURCE_PRIORITY.index(source) if source in SOURCE_PRIORITY else 999
@@ -43,6 +55,8 @@ def upsert_daily_summary(db: Session, user_id: str, date: str, source: str, **fi
             db.add(existing)
             db.commit()
             db.refresh(existing)
+        else:
+            db.commit()
         return existing
 
     row = DailySummary(user_id=user_id, date=date, source=source, **fields)

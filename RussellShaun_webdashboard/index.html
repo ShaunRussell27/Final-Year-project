@@ -25,7 +25,7 @@
             <div id="home" class="tab-content active">
                 <div class="home-section">
                     <h2>Welcome to the AI Burnout Detection System</h2>
-                    <p>This platform helps you monitor your well-being and identify burnout risks early.</p>
+                    <p>This platform helps you monitor your well-being and identify possible burnout risks early.</p>
                     
                     <div class="features">
                         <div class="feature-card">
@@ -55,7 +55,7 @@
                         <ol>
                             <li>Enter your health metrics in the Burnout Detection tab</li>
                             <li>Our AI analyzes your data using machine learning</li>
-                            <li>Get your burnout risk level (Low, Moderate, or High)</li>
+                            <li>Get your burnout risk level</li>
                             <li>Receive personalized recommendations for improvement</li>
                             <li>Chat with our AI assistant for wellness support</li>
                         </ol>
@@ -67,11 +67,11 @@
             <div id="burnout" class="tab-content">
                 <div class="form-section">
                     <h2>Get Burnout Summary (FastAPI Backend)</h2>
+                    <p>The data collected already through Garmin (HRV, steps, avg_stress, max_stress, sleep_score,body battery) </p>
                     <div id="burnoutForm">
                     <div class="form-group">
                         <label for="user_id">User ID:</label>
                         <input type="text" id="user_id" value="demo-user" required>
-                        <span class="help-text">Use the same user_id uploaded from iOS app</span>
                     </div>
 
                     <div class="form-group">
@@ -83,7 +83,7 @@
                     <div class="form-group">
                         <label for="resting_hr">Resting Heart Rate (optional):</label>
                         <input type="number" id="resting_hr" min="30" max="120" step="1" value="60">
-                        <span class="help-text">Used for manual summary upload if iOS data is not available</span>
+                        <span class="help-text">Used for manual summary if user did not wear watch</span>
                     </div>
 
                     <div class="form-group">
@@ -95,7 +95,7 @@
                     <div class="form-group">
                         <label for="avg_hr">Average HR (optional):</label>
                         <input type="number" id="avg_hr" min="30" max="180" step="1" value="75">
-                        <span class="help-text">Used for manual summary upload</span>
+                        <span class="help-text">Used for manual summary if user did not wear watch</span>
                     </div>
 
                     <div class="form-group">
@@ -118,6 +118,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=20260218"></script>
+    <script src="script.js?v=20260219"></script>
 </body>
 </html>
