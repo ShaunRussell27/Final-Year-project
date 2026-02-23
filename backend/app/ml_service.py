@@ -157,6 +157,16 @@ class NotebookBurnoutModelService:
         self.scaler = joblib.load(self.scaler_path)
         return self.is_ready
 
+    @staticmethod
+    def _is_stress_label(label: object) -> bool:
+        label_text = str(label).strip().lower()
+        if label_text in {"1", "1.0", "true", "stressed", "stress", "burnout", "high"}:
+            return True
+        try:
+            return int(float(label_text)) == 1
+        except ValueError:
+            return False
+
     def predict(
         self,
         resting_hr: Optional[float],
@@ -181,29 +191,37 @@ class NotebookBurnoutModelService:
         features_df = pd.DataFrame([feature_values], columns=self.feature_names)
         scaled = self.scaler.transform(features_df)
 
-        pred_class = int(self.model.predict(scaled)[0])
+        pred_raw = self.model.predict(scaled)[0]
+        is_predicted_stressed = self._is_stress_label(pred_raw)
 
         stress_probability = 0.0
         if hasattr(self.model, "predict_proba"):
             probabilities = self.model.predict_proba(scaled)[0]
             classes = list(getattr(self.model, "classes_", []))
-            if 1 in classes:
-                stress_probability = float(probabilities[classes.index(1)])
+            stress_class_index = next(
+                (index for index, cls in enumerate(classes) if self._is_stress_label(cls)),
+                None,
+            )
+
+            if stress_class_index is not None:
+                stress_probability = float(probabilities[stress_class_index])
+            elif len(probabilities) == 2:
+                stress_probability = float(max(probabilities) if is_predicted_stressed else min(probabilities))
             else:
                 stress_probability = float(max(probabilities))
 
         confidence = round(stress_probability * 100.0, 2)
         risk_score = int(round(stress_probability * 100.0))
 
-        if pred_class == 1 and risk_score >= 70:
+        if is_predicted_stressed and risk_score >= 70:
             risk_label = "High"
-        elif pred_class == 1:
+        elif is_predicted_stressed:
             risk_label = "Medium"
         else:
             risk_label = "Low"
 
         explanation = [
-            f"notebook model classified sample as {'stressed' if pred_class == 1 else 'normal'}",
+            f"notebook model classified sample as {'stressed' if is_predicted_stressed else 'normal'}",
             f"stressed-class probability: {confidence:.2f}%",
         ]
 
