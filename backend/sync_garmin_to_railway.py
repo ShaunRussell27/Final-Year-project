@@ -19,6 +19,24 @@ def _get_required_env(name: str) -> str:
     return value
 
 
+def _get_api_base_url() -> str:
+    explicit = os.getenv("BURNOUT_API_BASE_URL")
+    if explicit:
+        return explicit.rstrip("/")
+
+    railway_public_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
+    if railway_public_domain:
+        domain = railway_public_domain.strip().rstrip("/")
+        if domain.startswith("http://") or domain.startswith("https://"):
+            return domain
+        return f"https://{domain}"
+
+    raise RuntimeError(
+        "Missing required environment variable: BURNOUT_API_BASE_URL "
+        "(or RAILWAY_PUBLIC_DOMAIN)"
+    )
+
+
 def _get_client(email: str, password: str, token_store: str) -> Garmin:
     client = Garmin(email, password)
 
@@ -118,7 +136,7 @@ def _request_notebook_risk_report(
 
 
 def run_sync() -> dict[str, Any]:
-    api_base_url = _get_required_env("BURNOUT_API_BASE_URL").rstrip("/")
+    api_base_url = _get_api_base_url()
     user_id = _get_required_env("BURNOUT_USER_ID")
 
     garmin_email = _get_required_env("GARMIN_EMAIL")
@@ -167,6 +185,7 @@ def run_sync() -> dict[str, Any]:
 
     result = {
         "user_id": user_id,
+        "api_base_url": api_base_url,
         "date_window": {
             "start": start_date.isoformat(),
             "end": end_date.isoformat(),
