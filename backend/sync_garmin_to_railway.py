@@ -19,6 +19,21 @@ def _get_required_env(name: str) -> str:
     return value
 
 
+def _get_int_env(name: str, default: int, *, minimum: int | None = None) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid integer for {name}: {raw!r}") from exc
+
+    if minimum is not None and value < minimum:
+        raise RuntimeError(f"{name} must be at least {minimum}")
+    return value
+
+
 def _get_api_base_url() -> str:
     explicit = os.getenv("BURNOUT_API_BASE_URL")
     if explicit:
@@ -146,9 +161,7 @@ def run_sync() -> dict[str, Any]:
     if not user_id:
         user_id = garmin_email.split("@")[0]
 
-    days_back = int(os.getenv("GARMIN_DAYS_BACK", "7"))
-    if days_back < 1:
-        raise RuntimeError("GARMIN_DAYS_BACK must be at least 1")
+    days_back = _get_int_env("GARMIN_DAYS_BACK", 7, minimum=1)
 
     client = _get_client(garmin_email, garmin_password, token_store)
 

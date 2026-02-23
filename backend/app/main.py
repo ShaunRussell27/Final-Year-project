@@ -28,8 +28,20 @@ model_service.load()
 notebook_model_service = NotebookBurnoutModelService()
 notebook_model_service.load()
 
+
+def _int_env(name: str, default: int, minimum: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except ValueError:
+            value = default
+    return max(minimum, value)
+
 AUTO_SYNC_ENABLED = os.getenv("GARMIN_AUTO_SYNC_ENABLED", "false").lower() == "true"
-AUTO_SYNC_INTERVAL_MINUTES = int(os.getenv("GARMIN_AUTO_SYNC_INTERVAL_MINUTES", "180"))
+AUTO_SYNC_INTERVAL_MINUTES = _int_env("GARMIN_AUTO_SYNC_INTERVAL_MINUTES", 180, minimum=1)
 AUTO_SYNC_RUN_ON_STARTUP = os.getenv("GARMIN_AUTO_SYNC_RUN_ON_STARTUP", "true").lower() == "true"
 
 _garmin_sync_task: asyncio.Task | None = None
