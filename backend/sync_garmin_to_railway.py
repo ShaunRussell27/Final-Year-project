@@ -137,11 +137,14 @@ def _request_notebook_risk_report(
 
 def run_sync() -> dict[str, Any]:
     api_base_url = _get_api_base_url()
-    user_id = _get_required_env("BURNOUT_USER_ID")
+    user_id = os.getenv("BURNOUT_USER_ID")
 
     garmin_email = _get_required_env("GARMIN_EMAIL")
     garmin_password = _get_required_env("GARMIN_PASSWORD")
     token_store = os.getenv("GARMIN_TOKEN_STORE", "~/.garth")
+
+    if not user_id:
+        user_id = garmin_email.split("@")[0]
 
     days_back = int(os.getenv("GARMIN_DAYS_BACK", "7"))
     if days_back < 1:
