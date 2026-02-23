@@ -184,12 +184,22 @@ window.runBurnoutAnalysis = async (e) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(notebookPayload)
             });
-            if (!riskResponse.ok) {
-                const body = await riskResponse.text();
-                throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
-            }
 
-            const riskResult = await riskResponse.json();
+            let riskResult;
+            if (riskResponse.ok) {
+                riskResult = await riskResponse.json();
+            } else {
+                const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(userId)}`);
+                if (!fallbackResponse.ok) {
+                    const body = await riskResponse.text();
+                    throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
+                }
+                riskResult = await fallbackResponse.json();
+                if (!Array.isArray(riskResult.explanation)) {
+                    riskResult.explanation = [];
+                }
+                riskResult.explanation.unshift('notebook model unavailable, showing latest baseline risk');
+            }
 
             setStatus('requesting summary');
             const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}`);

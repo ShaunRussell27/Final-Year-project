@@ -156,7 +156,7 @@ def run_sync() -> dict[str, Any]:
 
     garmin_email = _get_required_env("GARMIN_EMAIL")
     garmin_password = _get_required_env("GARMIN_PASSWORD")
-    token_store = os.getenv("GARMIN_TOKEN_STORE", "~/.garth")
+    token_store = (os.getenv("GARMIN_TOKEN_STORE") or "").strip() or "~/.garth"
 
     if not user_id:
         user_id = garmin_email.split("@")[0]
@@ -217,9 +217,12 @@ def run_sync() -> dict[str, Any]:
         "token_store": str(Path(token_store).expanduser()),
     }
 
-    output_path = os.getenv("SYNC_OUTPUT_JSON", "sync_result.json")
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2)
+    output_path = (os.getenv("SYNC_OUTPUT_JSON") or "").strip() or "sync_result.json"
+    try:
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+    except Exception as exc:
+        result["sync_output_write_error"] = str(exc)
 
     return result
 
