@@ -46,7 +46,10 @@ _garmin_sync_status: dict[str, object] = {
 
 
 def _run_garmin_sync_once_blocking() -> dict[str, object]:
-    from sync_garmin_to_railway import run_sync
+    try:
+        from sync_garmin_to_railway import run_sync
+    except ModuleNotFoundError:
+        from backend.sync_garmin_to_railway import run_sync
 
     return run_sync()
 
