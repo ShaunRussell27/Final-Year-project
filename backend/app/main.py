@@ -1,3 +1,6 @@
+import asyncio
+import os
+
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -5,8 +8,8 @@ from datetime import datetime, timezone
 
 from .db import get_db, engine
 from .models import Base, DailySummary
-from .ml_service import BurnoutModelService
-from .schemas import HealthKitIn, DailySummaryOut, RiskOut
+from .ml_service import BurnoutModelService, NotebookBurnoutModelService
+from .schemas import HealthKitIn, DailySummaryOut, RiskOut, NotebookPredictIn
 
 app = FastAPI(title="Burnout Project Backend")
 
@@ -22,12 +25,106 @@ app.add_middleware(
 Base.metadata.create_all(bind=engine)
 model_service = BurnoutModelService()
 model_service.load()
+notebook_model_service = NotebookBurnoutModelService()
+notebook_model_service.load()
+
+AUTO_SYNC_ENABLED = os.getenv("GARMIN_AUTO_SYNC_ENABLED", "false").lower() == "true"
+AUTO_SYNC_INTERVAL_MINUTES = int(os.getenv("GARMIN_AUTO_SYNC_INTERVAL_MINUTES", "180"))
+AUTO_SYNC_RUN_ON_STARTUP = os.getenv("GARMIN_AUTO_SYNC_RUN_ON_STARTUP", "true").lower() == "true"
+
+_garmin_sync_task: asyncio.Task | None = None
+_garmin_sync_status: dict[str, object] = {
+    "enabled": AUTO_SYNC_ENABLED,
+    "interval_minutes": max(1, AUTO_SYNC_INTERVAL_MINUTES),
+    "run_on_startup": AUTO_SYNC_RUN_ON_STARTUP,
+    "last_run_started_at": None,
+    "last_run_finished_at": None,
+    "last_run_success": None,
+    "last_error": None,
+    "last_result": None,
+}
+
+
+def _run_garmin_sync_once_blocking() -> dict[str, object]:
+    from sync_garmin_to_railway import run_sync
+
+    return run_sync()
+
+
+async def _run_garmin_sync_once_safe() -> None:
+    _garmin_sync_status["last_run_started_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, _run_garmin_sync_once_blocking)
+        _garmin_sync_status["last_run_success"] = True
+        _garmin_sync_status["last_error"] = None
+        _garmin_sync_status["last_result"] = result
+        print("[Garmin Auto Sync] Sync completed")
+    except Exception as exc:
+        _garmin_sync_status["last_run_success"] = False
+        _garmin_sync_status["last_error"] = str(exc)
+        print(f"[Garmin Auto Sync] Sync failed: {exc}")
+    finally:
+        _garmin_sync_status["last_run_finished_at"] = datetime.now(timezone.utc).isoformat()
+
+
+async def _garmin_sync_loop() -> None:
+    if AUTO_SYNC_RUN_ON_STARTUP:
+        await _run_garmin_sync_once_safe()
+
+    while True:
+        await asyncio.sleep(max(1, AUTO_SYNC_INTERVAL_MINUTES) * 60)
+        await _run_garmin_sync_once_safe()
+
+
+@app.on_event("startup")
+async def _startup_auto_sync() -> None:
+    global _garmin_sync_task
+    if not AUTO_SYNC_ENABLED:
+        print("[Garmin Auto Sync] Disabled (set GARMIN_AUTO_SYNC_ENABLED=true to enable)")
+        return
+
+    _garmin_sync_task = asyncio.create_task(_garmin_sync_loop())
+    print(
+        f"[Garmin Auto Sync] Enabled every {max(1, AUTO_SYNC_INTERVAL_MINUTES)} minute(s)"
+    )
+
+
+@app.on_event("shutdown")
+async def _shutdown_auto_sync() -> None:
+    global _garmin_sync_task
+    if _garmin_sync_task is None:
+        return
+
+    _garmin_sync_task.cancel()
+    try:
+        await _garmin_sync_task
+    except asyncio.CancelledError:
+        pass
+    _garmin_sync_task = None
 
 SOURCE_PRIORITY = ["healthkit", "garmin_export"]  # prefer healthkit if both exist
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/sync/status")
+def sync_status():
+    return {
+        "sync": {
+            "enabled": _garmin_sync_status["enabled"],
+            "interval_minutes": _garmin_sync_status["interval_minutes"],
+            "run_on_startup": _garmin_sync_status["run_on_startup"],
+            "task_running": _garmin_sync_task is not None and not _garmin_sync_task.done(),
+            "last_run_started_at": _garmin_sync_status["last_run_started_at"],
+            "last_run_finished_at": _garmin_sync_status["last_run_finished_at"],
+            "last_run_success": _garmin_sync_status["last_run_success"],
+            "last_error": _garmin_sync_status["last_error"],
+            "last_result": _garmin_sync_status["last_result"],
+        }
+    }
 
 def upsert_daily_summary(db: Session, user_id: str, date: str, source: str, **fields):
     # If there are existing records for this user+date, keep one canonical row.
@@ -234,6 +331,35 @@ def risk_latest(user_id: str, db: Session = Depends(get_db)):
         )
 
     return _compute_risk(latest, baseline_rows)
+
+
+@app.post("/risk/notebook", response_model=RiskOut)
+def risk_notebook(payload: NotebookPredictIn):
+    prediction = notebook_model_service.predict(
+        resting_hr=payload.resting_hr,
+        avg_hr=payload.avg_hr,
+        hrv_avg=payload.hrv_avg,
+    )
+
+    if prediction is None:
+        if not notebook_model_service.is_ready:
+            raise HTTPException(
+                status_code=503,
+                detail="Notebook model is not loaded. Expected notebooks/burnout_model.pkl and notebooks/scaler.pkl",
+            )
+        raise HTTPException(status_code=400, detail="Valid resting_hr (or avg_hr) and hrv_avg are required")
+
+    risk_date = payload.date or datetime.now(timezone.utc).date().isoformat()
+    risk_user_id = payload.user_id or "demo-user"
+
+    return RiskOut(
+        user_id=risk_user_id,
+        date=risk_date,
+        risk_label=prediction.risk_label,
+        risk_score=prediction.risk_score,
+        explanation=prediction.explanation,
+        confidence=prediction.confidence,
+    )
 
 @app.get("/summaries", response_model=list[DailySummaryOut])
 def summaries(user_id: str, limit: int = 30, db: Session = Depends(get_db)):

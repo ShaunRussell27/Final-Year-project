@@ -9,3 +9,7 @@ numpy
 pandas
 scikit-learn
 joblib
+requests
+garminconnect
+garth
+python-dotenv

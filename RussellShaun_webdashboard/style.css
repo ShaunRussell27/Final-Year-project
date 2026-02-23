@@ -97,6 +97,35 @@ input[type="range"] {
     margin-top: 4px;
 }
 
+.sync-status-panel {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.sync-status-panel h3 {
+    margin-bottom: 6px;
+    font-size: 14px;
+    color: #333;
+}
+
+.sync-status-panel.ok {
+    border-color: #28a745;
+    background: #eefaf1;
+}
+
+.sync-status-panel.warn {
+    border-color: #ffc107;
+    background: #fff9e8;
+}
+
+.sync-status-panel.error {
+    border-color: #dc3545;
+    background: #fdeeee;
+}
+
 .btn-analyze {
     width: 100%;
     padding: 12px;

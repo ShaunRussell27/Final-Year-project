@@ -32,3 +32,13 @@ class RiskOut(BaseModel):
     risk_label: str
     risk_score: int
     explanation: list[str]
+    confidence: Optional[float] = None
+
+
+class NotebookPredictIn(BaseModel):
+    user_id: Optional[str] = Field(default="demo-user", examples=["u123"])
+    date: Optional[str] = Field(default=None, examples=["2026-02-16"])
+
+    resting_hr: Optional[float] = None
+    avg_hr: Optional[float] = None
+    hrv_avg: float = Field(..., examples=[53.0])

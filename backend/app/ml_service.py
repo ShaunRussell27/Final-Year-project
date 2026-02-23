@@ -16,6 +16,14 @@ class ModelPrediction:
     explanation: list[str]
 
 
+@dataclass
+class NotebookModelPrediction:
+    risk_score: int
+    risk_label: str
+    confidence: float
+    explanation: list[str]
+
+
 class BurnoutModelService:
     def __init__(self, artifact_path: Optional[str] = None):
         base_dir = os.path.dirname(__file__)
@@ -121,3 +129,87 @@ class BurnoutModelService:
         risk = (1.0 - normalized) * 100.0
         risk = max(0.0, min(100.0, risk))
         return int(round(risk))
+
+
+class NotebookBurnoutModelService:
+    def __init__(self, model_path: Optional[str] = None, scaler_path: Optional[str] = None):
+        base_dir = os.path.dirname(__file__)
+        project_root = os.path.abspath(os.path.join(base_dir, "..", ".."))
+        default_model_path = os.path.join(project_root, "notebooks", "burnout_model.pkl")
+        default_scaler_path = os.path.join(project_root, "notebooks", "scaler.pkl")
+
+        self.model_path = model_path or default_model_path
+        self.scaler_path = scaler_path or default_scaler_path
+
+        self.model = None
+        self.scaler = None
+        self.feature_names = ["HR", "RMSSD", "SDRR", "MEAN_RR", "MEDIAN_RR"]
+
+    @property
+    def is_ready(self) -> bool:
+        return self.model is not None and self.scaler is not None
+
+    def load(self) -> bool:
+        if not os.path.exists(self.model_path) or not os.path.exists(self.scaler_path):
+            return False
+
+        self.model = joblib.load(self.model_path)
+        self.scaler = joblib.load(self.scaler_path)
+        return self.is_ready
+
+    def predict(
+        self,
+        resting_hr: Optional[float],
+        avg_hr: Optional[float],
+        hrv_avg: float,
+    ) -> Optional[NotebookModelPrediction]:
+        if not self.is_ready:
+            return None
+
+        hr_value = resting_hr if resting_hr is not None else avg_hr
+        if hr_value is None or hr_value <= 0 or hrv_avg <= 0:
+            return None
+
+        feature_values = {
+            "HR": float(hr_value),
+            "RMSSD": float(hrv_avg),
+            "SDRR": float(hrv_avg) * 1.1,
+            "MEAN_RR": 60000.0 / float(hr_value),
+            "MEDIAN_RR": 60000.0 / float(hr_value),
+        }
+
+        features_df = pd.DataFrame([feature_values], columns=self.feature_names)
+        scaled = self.scaler.transform(features_df)
+
+        pred_class = int(self.model.predict(scaled)[0])
+
+        stress_probability = 0.0
+        if hasattr(self.model, "predict_proba"):
+            probabilities = self.model.predict_proba(scaled)[0]
+            classes = list(getattr(self.model, "classes_", []))
+            if 1 in classes:
+                stress_probability = float(probabilities[classes.index(1)])
+            else:
+                stress_probability = float(max(probabilities))
+
+        confidence = round(stress_probability * 100.0, 2)
+        risk_score = int(round(stress_probability * 100.0))
+
+        if pred_class == 1 and risk_score >= 70:
+            risk_label = "High"
+        elif pred_class == 1:
+            risk_label = "Medium"
+        else:
+            risk_label = "Low"
+
+        explanation = [
+            f"notebook model classified sample as {'stressed' if pred_class == 1 else 'normal'}",
+            f"stressed-class probability: {confidence:.2f}%",
+        ]
+
+        return NotebookModelPrediction(
+            risk_score=risk_score,
+            risk_label=risk_label,
+            confidence=confidence,
+            explanation=explanation,
+        )

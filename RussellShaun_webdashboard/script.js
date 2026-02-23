@@ -29,10 +29,79 @@ activateTab('burnout');
 const burnoutForm = document.getElementById('burnoutForm');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const debugStatus = document.getElementById('debugStatus');
+const syncStatusPanel = document.getElementById('syncStatusPanel');
+const syncStatusText = document.getElementById('syncStatusText');
 
 function setStatus(text) {
     if (debugStatus) {
         debugStatus.textContent = `Status: ${text}`;
+    }
+}
+
+function formatUtcToLocal(isoText) {
+    if (!isoText) {
+        return 'never';
+    }
+    const d = new Date(isoText);
+    if (Number.isNaN(d.getTime())) {
+        return isoText;
+    }
+    return d.toLocaleString();
+}
+
+async function refreshSyncStatus() {
+    if (!syncStatusPanel || !syncStatusText) {
+        return;
+    }
+
+    const backendUrlInput = document.getElementById('backend_url');
+    const backendUrl = backendUrlInput?.value?.trim()?.replace(/\/$/, '');
+    if (!backendUrl) {
+        syncStatusPanel.classList.remove('ok', 'warn', 'error');
+        syncStatusPanel.classList.add('warn');
+        syncStatusText.textContent = 'Set Backend URL to read server auto-sync status.';
+        return;
+    }
+
+    try {
+        const response = await fetch(`${backendUrl}/sync/status`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const sync = data?.sync || {};
+        const enabled = !!sync.enabled;
+        const success = sync.last_run_success;
+        const running = !!sync.task_running;
+        const finishedAt = formatUtcToLocal(sync.last_run_finished_at);
+
+        syncStatusPanel.classList.remove('ok', 'warn', 'error');
+
+        if (!enabled) {
+            syncStatusPanel.classList.add('warn');
+            syncStatusText.textContent = 'Auto-sync is disabled on server (set GARMIN_AUTO_SYNC_ENABLED=true).';
+            return;
+        }
+
+        if (success === true) {
+            syncStatusPanel.classList.add('ok');
+            syncStatusText.textContent = `Auto-sync is ON (${sync.interval_minutes} min). Last success: ${finishedAt}.${running ? ' Sync currently running.' : ''}`;
+            return;
+        }
+
+        if (success === false) {
+            syncStatusPanel.classList.add('error');
+            syncStatusText.textContent = `Auto-sync last run failed at ${finishedAt}. ${sync.last_error || ''}`.trim();
+            return;
+        }
+
+        syncStatusPanel.classList.add('warn');
+        syncStatusText.textContent = `Auto-sync is ON (${sync.interval_minutes} min). Waiting for first completed run...`;
+    } catch (error) {
+        syncStatusPanel.classList.remove('ok', 'warn', 'error');
+        syncStatusPanel.classList.add('error');
+        syncStatusText.textContent = `Cannot read /sync/status: ${error.message}`;
     }
 }
 
@@ -52,6 +121,8 @@ window.runBurnoutAnalysis = async (e) => {
     }
 
         activateTab('burnout');
+        refreshSyncStatus();
+        setInterval(refreshSyncStatus, 60000);
 
         const userId = document.getElementById('user_id').value.trim();
         const backendUrl = document.getElementById('backend_url').value.trim().replace(/\/$/, '');
@@ -60,10 +131,17 @@ window.runBurnoutAnalysis = async (e) => {
         const steps = parseFloat(document.getElementById('steps').value);
         const restingHr = parseFloat(document.getElementById('resting_hr').value);
         const avgHr = parseFloat(document.getElementById('avg_hr').value);
+        const hrvAvg = parseFloat(document.getElementById('hrv_avg').value);
 
         if (!userId) {
             setStatus('missing user_id');
             showError('Please enter a user_id.');
+            return;
+        }
+
+        if (!Number.isFinite(hrvAvg) || hrvAvg <= 0) {
+            setStatus('missing hrv_avg');
+            showError('Please enter a valid HRV Average (RMSSD).');
             return;
         }
     
@@ -92,8 +170,20 @@ window.runBurnoutAnalysis = async (e) => {
                 throw new Error(`Ingest failed (${ingestResponse.status})${body ? `: ${body}` : ''}`);
             }
 
-            setStatus('requesting risk');
-            const riskResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(userId)}`);
+            setStatus('requesting notebook-model risk');
+            const notebookPayload = {
+                user_id: userId,
+                date: today,
+                resting_hr: Number.isFinite(restingHr) ? restingHr : null,
+                avg_hr: Number.isFinite(avgHr) ? avgHr : null,
+                hrv_avg: hrvAvg,
+            };
+
+            const riskResponse = await fetch(`${backendUrl}/risk/notebook`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(notebookPayload)
+            });
             if (!riskResponse.ok) {
                 const body = await riskResponse.text();
                 throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
@@ -110,10 +200,12 @@ window.runBurnoutAnalysis = async (e) => {
 
             displayResults(riskResult, summaryResult);
             setStatus('done');
+            refreshSyncStatus();
         } catch (error) {
             console.error('Error:', error);
             setStatus(`error: ${error.message}`);
             showError(`Error: ${error.message}. Make sure FastAPI is running on ${backendUrl}.`);
+            refreshSyncStatus();
         } finally {
             analyzeBtn.disabled = false;
         }
@@ -165,8 +257,12 @@ function displayResults(riskResult, summaryResult) {
         icon = '🚨';
     }
     
+    const confidenceSuffix = Number.isFinite(riskResult?.confidence)
+        ? `<br><small>Model confidence: ${Number(riskResult.confidence).toFixed(2)}%</small>`
+        : '';
+
     resultBox.className = `result-box ${riskClass}`;
-    resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)`;
+    resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}`;
     
     // Generate recommendations
     let recommendations = getRecommendations(riskResult, summaryResult, riskLevel);

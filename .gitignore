@@ -9,6 +9,13 @@ __pycache__/
 # Local backend runtime files
 backend/burnout.db
 backend/app/artifacts/*.joblib
+sync_result.json
+
+# Large local datasets / notebook generated files
+notebooks/swellwesad-hrv-data/
+notebooks/.ipynb_checkpoints/
+*.ipynb_checkpoints/
+*.db
 
 # Xcode junk
 DerivedData/

@@ -66,8 +66,8 @@
             <!-- Burnout Detection Tab -->
             <div id="burnout" class="tab-content">
                 <div class="form-section">
-                    <h2>Get Burnout Summary (FastAPI Backend)</h2>
-                    <p>The data collected already through Garmin (HRV, steps, avg_stress, max_stress, sleep_score,body battery) </p>
+                    <h2>Get Burnout Summary (Notebook AI Model via FastAPI)</h2>
+                    <p>Uses your notebook model files: <strong>burnout_model.pkl</strong> + <strong>scaler.pkl</strong>.</p>
                     <div id="burnoutForm">
                     <div class="form-group">
                         <label for="user_id">User ID:</label>
@@ -99,9 +99,20 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="hrv_avg">HRV Average (RMSSD):</label>
+                        <input type="number" id="hrv_avg" min="1" max="300" step="0.1" value="53" required>
+                        <span class="help-text">Required by your notebook model for prediction</span>
+                    </div>
+
+                    <div class="form-group">
                         <label for="backend_url">Backend URL:</label>
                         <input type="text" id="backend_url" value="http://127.0.0.1:8000" required>
                         <span class="help-text">Change to Railway URL when deployed</span>
+                    </div>
+
+                    <div id="syncStatusPanel" class="sync-status-panel">
+                        <h3>Server Auto-Sync Status</h3>
+                        <p id="syncStatusText" class="help-text">Checking server sync status...</p>
                     </div>
 
                         <button type="button" id="analyzeBtn" class="btn-analyze" onclick="window.runBurnoutAnalysis && window.runBurnoutAnalysis(event)">Analyze Burnout Risk</button>
