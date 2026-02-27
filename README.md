@@ -1,45 +1,119 @@
-# Garmin MonkeyC App
+# Final Year Project — Burnout Detection Platform
 
-## Overview
-This project is a Garmin MonkeyC application designed to provide a user-friendly interface and functionality for Garmin devices. It utilizes the Monkey C SDK to create a seamless experience for users.
+This repository contains an end-to-end burnout monitoring prototype that combines:
+- Garmin metric collection and sync
+- A FastAPI backend with risk endpoints
+- Two risk model paths (backend model + notebook model)
+- A web dashboard for analysis and visualization
 
-## Project Structure
-The project is organized into several directories and files:
+## Current Architecture
 
-- **source/**: Contains the main application code.
-  - **App.mc**: The main application file that initializes the app and sets up the main view.
-  - **views/**: Contains view files for rendering the user interface.
-    - **MainView.mc**: Defines the MainView class responsible for the main user interface.
-  - **modules/**: Contains utility modules.
-    - **util.mc**: Exports utility functions for use throughout the application.
+- **Backend API**: `backend/app/main.py`
+  - Stores daily summaries (`DailySummary`) in SQLite locally or Postgres on Railway.
+  - Exposes ingest, summary, and risk endpoints.
+  - Supports optional automatic Garmin sync loop via environment variables.
 
-- **resources/**: Contains resources used by the application.
-  - **strings/**: Contains localized string resources.
-    - **en-US.json**: English (US) localization strings.
-  - **layouts/**: Contains layout definitions.
-    - **main.layout**: Layout structure for the main view.
-  - **fonts/**: Contains font resources.
-    - **README**: Information about the fonts used in the application.
+- **Garmin sync pipeline**: `backend/sync_garmin_to_railway.py`
+  - Reads Garmin Connect data (steps, sleep, resting HR, HRV, etc.).
+  - Sends daily summaries to `/ingest/healthkit`.
+  - Fetches `/risk/latest` and `/risk/notebook` after sync.
 
-- **manifest.xml**: The application manifest providing metadata about the app.
+- **Model services**: `backend/app/ml_service.py`
+  - **Primary backend model**: Isolation Forest artifact `backend/app/artifacts/burnout_iforest.joblib` used by `/risk/latest`.
+  - **Notebook model**: `notebooks/burnout_model.pkl` + `notebooks/scaler.pkl` used by `/risk/notebook`.
 
-- **.vscode/**: Contains configuration files for the development environment.
-  - **settings.json**: Workspace-specific settings for the development environment.
-  - **launch.json**: Launch configurations for debugging the application.
+- **Web dashboard**: `RussellShaun_webdashboard/`
+  - Burnout tab supports watch-data mode and manual metric override.
 
-- **.gitignore**: Specifies files and directories to be ignored by version control.
+## Repository Layout
 
-## Setup Instructions
-1. Clone the repository to your local machine.
-2. Open the project in your preferred development environment.
-3. Ensure you have the Monkey C SDK installed and configured.
-4. Build and run the application on a compatible Garmin device or simulator.
+- `backend/` FastAPI app, DB models, model service, sync script, training script
+- `notebooks/` notebook experiments and notebook model artifacts (`.pkl`)
+- `RussellShaun_webdashboard/` static dashboard UI
+- `data/` raw/processed datasets
+- `docs/` architecture and pipeline notes
 
-## Usage
-Once the application is running, users can navigate through the main interface, which is designed to be intuitive and responsive. The application includes various features that enhance the user experience.
+## Quick Start (Local)
 
-## Contributing
-Contributions to the project are welcome. Please submit a pull request or open an issue for any suggestions or improvements.
+### 1) Create and activate virtual environment
 
-## License
-This project is licensed under the MIT License. See the LICENSE file for more details.
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+### 2) Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3) Run backend API
+
+From repository root:
+
+```bash
+python -m uvicorn backend.app.main:app --reload
+```
+
+API docs: `http://127.0.0.1:8000/docs`
+
+### 4) Open dashboard
+
+Open `RussellShaun_webdashboard/index.html` in your browser.
+Set `Backend URL` to your running API (for local: `http://127.0.0.1:8000`).
+
+## Key API Endpoints
+
+- `GET /health` — health check
+- `GET /sync/status` — auto-sync state and last sync result
+- `POST /ingest/healthkit` — upsert daily summary metrics
+- `GET /summary/latest?user_id=...` — latest summary for a user
+- `GET /risk/latest?user_id=...` — backend model risk (Isolation Forest / fallback scoring)
+- `POST /risk/notebook` — notebook model risk using HR/HRV inputs
+
+## Garmin Sync Configuration
+
+Used by `backend/sync_garmin_to_railway.py` and startup auto-sync:
+
+- `GARMIN_EMAIL` (required)
+- `GARMIN_PASSWORD` (required)
+- `BURNOUT_API_BASE_URL` (or `RAILWAY_PUBLIC_DOMAIN`)
+- `BURNOUT_USER_ID` (optional; defaults to email prefix)
+- `GARMIN_DAYS_BACK` (default `7`)
+- `GARMIN_TOKEN_STORE` (default `~/.garth`)
+- `GARMIN_AUTO_SYNC_ENABLED` (`true`/`false`, default `false`)
+- `GARMIN_AUTO_SYNC_INTERVAL_MINUTES` (default `180`)
+- `GARMIN_AUTO_SYNC_RUN_ON_STARTUP` (default `true`)
+
+Run manual sync:
+
+```bash
+python backend/sync_garmin_to_railway.py
+```
+
+## Model Training Notes
+
+- Train/update backend Isolation Forest artifact:
+
+```bash
+python backend/train_model.py
+```
+
+- Notebook model files are expected at:
+  - `notebooks/burnout_model.pkl`
+  - `notebooks/scaler.pkl`
+
+If notebook files are missing, `/risk/notebook` returns a 503 and clients can fall back to `/risk/latest`.
+
+## Deployment Notes
+
+- Root `Procfile` runs backend via:
+  - `cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Database:
+  - Local fallback: SQLite (`sqlite:///./burnout.db`)
+  - Hosted: Postgres via `DATABASE_URL` (auto-normalized to `postgresql://`)
+
+## Project Status
+
+This README reflects the current burnout detection stack in this repository and replaces the old scrapped project documentation.
