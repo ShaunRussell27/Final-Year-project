@@ -31,6 +31,15 @@ const analyzeBtn = document.getElementById('analyzeBtn');
 const debugStatus = document.getElementById('debugStatus');
 const syncStatusPanel = document.getElementById('syncStatusPanel');
 const syncStatusText = document.getElementById('syncStatusText');
+const metricsSourceSelect = document.getElementById('metrics_source');
+const manualMetricsSection = document.getElementById('manualMetrics');
+const restingHrInput = document.getElementById('resting_hr');
+const hrvAvgInput = document.getElementById('hrv_avg');
+
+let lastResolvedWatchMetrics = {
+    restingHr: null,
+    hrvAvg: null,
+};
 
 function setStatus(text) {
     if (debugStatus) {
@@ -105,6 +114,89 @@ async function refreshSyncStatus() {
     }
 }
 
+function setManualMetricsVisibility() {
+    if (!manualMetricsSection || !metricsSourceSelect) {
+        return;
+    }
+
+    const isManual = metricsSourceSelect.value === 'manual';
+    manualMetricsSection.classList.toggle('hidden', !isManual);
+}
+
+async function prefillManualMetricsFromWatch() {
+    const backendUrl = document.getElementById('backend_url')?.value?.trim()?.replace(/\/$/, '');
+    const userId = document.getElementById('user_id')?.value?.trim();
+
+    if (!backendUrl || !userId) {
+        return;
+    }
+
+    let watchMetrics = lastResolvedWatchMetrics;
+    if (!Number.isFinite(watchMetrics?.restingHr) || !Number.isFinite(watchMetrics?.hrvAvg)) {
+        watchMetrics = await resolveWatchMetrics(backendUrl, userId);
+    }
+
+    if (restingHrInput && Number.isFinite(watchMetrics.restingHr)) {
+        restingHrInput.value = String(watchMetrics.restingHr);
+    }
+
+    if (hrvAvgInput && Number.isFinite(watchMetrics.hrvAvg)) {
+        hrvAvgInput.value = String(watchMetrics.hrvAvg);
+    }
+}
+
+if (metricsSourceSelect) {
+    metricsSourceSelect.addEventListener('change', async () => {
+        setManualMetricsVisibility();
+        if (metricsSourceSelect.value === 'manual') {
+            await prefillManualMetricsFromWatch();
+        }
+    });
+}
+
+setManualMetricsVisibility();
+
+async function resolveWatchMetrics(backendUrl, userId) {
+    let restingHr = null;
+    let hrvAvg = null;
+
+    try {
+        const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}`);
+        if (summaryResponse.ok) {
+            const summary = await summaryResponse.json();
+            if (Number.isFinite(summary?.resting_hr)) {
+                restingHr = Number(summary.resting_hr);
+            }
+        }
+    } catch (error) {
+        console.warn('Could not load summary/latest for watch metrics', error);
+    }
+
+    try {
+        const syncResponse = await fetch(`${backendUrl}/sync/status`);
+        if (syncResponse.ok) {
+            const syncData = await syncResponse.json();
+            const latestDayData = syncData?.sync?.last_result?.latest_day_data || {};
+            if (Number.isFinite(latestDayData?.hrv_avg)) {
+                hrvAvg = Number(latestDayData.hrv_avg);
+            }
+            if (!Number.isFinite(restingHr) && Number.isFinite(latestDayData?.resting_hr)) {
+                restingHr = Number(latestDayData.resting_hr);
+            }
+        }
+    } catch (error) {
+        console.warn('Could not load sync/status for watch metrics', error);
+    }
+
+    const resolved = {
+        restingHr: Number.isFinite(restingHr) ? restingHr : null,
+        hrvAvg: Number.isFinite(hrvAvg) ? hrvAvg : null,
+    };
+
+    lastResolvedWatchMetrics = resolved;
+    return resolved;
+}
+
 if (burnoutForm) {
     burnoutForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -126,12 +218,10 @@ window.runBurnoutAnalysis = async (e) => {
 
         const userId = document.getElementById('user_id').value.trim();
         const backendUrl = document.getElementById('backend_url').value.trim().replace(/\/$/, '');
+        const metricSource = metricsSourceSelect?.value || 'watch';
 
-        const sleepHours = parseFloat(document.getElementById('sleep').value);
-        const steps = parseFloat(document.getElementById('steps').value);
-        const restingHr = parseFloat(document.getElementById('resting_hr').value);
-        const avgHr = parseFloat(document.getElementById('avg_hr').value);
-        const hrvAvg = parseFloat(document.getElementById('hrv_avg').value);
+        const manualRestingHr = parseFloat(document.getElementById('resting_hr').value);
+        const manualHrvAvg = parseFloat(document.getElementById('hrv_avg').value);
 
         if (!userId) {
             setStatus('missing user_id');
@@ -139,9 +229,31 @@ window.runBurnoutAnalysis = async (e) => {
             return;
         }
 
+        let restingHr = Number.isFinite(manualRestingHr) ? manualRestingHr : null;
+        let hrvAvg = Number.isFinite(manualHrvAvg) ? manualHrvAvg : null;
+
+        if (metricSource === 'watch') {
+            setStatus('reading watch metrics');
+            const watchMetrics = await resolveWatchMetrics(backendUrl, userId);
+            restingHr = watchMetrics.restingHr ?? restingHr;
+            hrvAvg = watchMetrics.hrvAvg ?? hrvAvg;
+
+            if (restingHrInput && Number.isFinite(restingHr)) {
+                restingHrInput.value = String(restingHr);
+            }
+
+            if (hrvAvgInput && Number.isFinite(hrvAvg)) {
+                hrvAvgInput.value = String(hrvAvg);
+            }
+        }
+
         if (!Number.isFinite(hrvAvg) || hrvAvg <= 0) {
             setStatus('missing hrv_avg');
-            showError('Please enter a valid HRV Average (RMSSD).');
+            showError(
+                metricSource === 'watch'
+                    ? 'No watch HRV found. Switch Metrics Source to "Enter metrics manually" and provide HRV Average.'
+                    : 'Please enter a valid HRV Average (RMSSD).'
+            );
             return;
         }
     
@@ -153,10 +265,10 @@ window.runBurnoutAnalysis = async (e) => {
         const ingestPayload = {
             user_id: userId,
             date: today,
-            steps: Number.isFinite(steps) ? Math.round(steps) : null,
-            sleep_minutes: Number.isFinite(sleepHours) ? Math.round(sleepHours * 60) : null,
+            steps: null,
+            sleep_minutes: null,
             resting_hr: Number.isFinite(restingHr) ? restingHr : null,
-            avg_hr: Number.isFinite(avgHr) ? avgHr : null,
+            avg_hr: null,
             hr_samples_count: null,
         };
 
@@ -175,7 +287,7 @@ window.runBurnoutAnalysis = async (e) => {
                 user_id: userId,
                 date: today,
                 resting_hr: Number.isFinite(restingHr) ? restingHr : null,
-                avg_hr: Number.isFinite(avgHr) ? avgHr : null,
+                avg_hr: null,
                 hrv_avg: hrvAvg,
             };
 

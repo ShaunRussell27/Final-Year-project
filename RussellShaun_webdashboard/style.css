@@ -64,6 +64,7 @@ label {
 }
 
 input[type="number"],
+input[type="text"],
 input[type="range"] {
     width: 100%;
     padding: 10px;
@@ -74,9 +75,40 @@ input[type="range"] {
 }
 
 input[type="number"]:focus,
+input[type="text"]:focus,
 input[type="range"]:focus {
     outline: none;
     border-color: #667eea;
+}
+
+.burnout-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.full-width {
+    grid-column: 1 / -1;
+}
+
+.select-input {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fff;
+    transition: border-color 0.3s ease;
+}
+
+.select-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.hidden {
+    display: none;
 }
 
 input[type="range"] {
@@ -293,6 +325,12 @@ input[type="range"] {
 
 .tab-content.active {
     display: block;
+}
+
+@media (max-width: 768px) {
+    .burnout-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @keyframes fadeIn {

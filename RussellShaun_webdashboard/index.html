@@ -67,48 +67,42 @@
             <div id="burnout" class="tab-content">
                 <div class="form-section">
                     <h2>Get Burnout Summary (Notebook AI Model via FastAPI)</h2>
-                    <p>Uses your notebook model files: <strong>burnout_model.pkl</strong> + <strong>scaler.pkl</strong>.</p>
+                    <p>Uses notebook model files: <strong>burnout_model.pkl</strong> + <strong>scaler.pkl</strong>.</p>
                     <div id="burnoutForm">
-                    <div class="form-group">
-                        <label for="user_id">User ID:</label>
-                        <input type="text" id="user_id" value="shaun" required>
-                    </div>
+                        <div class="burnout-grid">
+                            <div class="form-group">
+                                <label for="user_id">User ID:</label>
+                                <input type="text" id="user_id" value="shaun" required>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="sleep">Sleep Hours (optional manual upload):</label>
-                        <input type="number" id="sleep" min="0" max="12" step="0.5" value="7">
-                        <span class="help-text">If you click Analyze, this can be uploaded first as a daily summary</span>
-                    </div>
+                            <div class="form-group">
+                                <label for="backend_url">Backend URL:</label>
+                                <input type="text" id="backend_url" value="https://final-year-project-production-1acf.up.railway.app" required>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="resting_hr">Resting Heart Rate (optional):</label>
-                        <input type="number" id="resting_hr" min="30" max="120" step="1" value="60">
-                        <span class="help-text">Used for manual summary if user did not wear watch</span>
-                    </div>
+                            <div class="form-group full-width">
+                                <label for="metrics_source">Metrics Source:</label>
+                                <select id="metrics_source" class="select-input">
+                                    <option value="watch" selected>Use latest watch data (recommended)</option>
+                                    <option value="manual">Enter metrics manually</option>
+                                </select>
+                                <span class="help-text">Watch mode auto-reads values from your backend sync; manual mode lets you override.</span>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="steps">Daily Steps:</label>
-                        <input type="number" id="steps" min="0" max="50000" step="100" value="5000" required>
-                        <span class="help-text">Recommended: 8000+ steps</span>
-                    </div>
+                            <div id="manualMetrics" class="burnout-grid full-width hidden">
+                                <div class="form-group">
+                                    <label for="hrv_avg">HRV Average (RMSSD):</label>
+                                    <input type="number" id="hrv_avg" min="1" max="300" step="0.1" value="53">
+                                    <span class="help-text">Required for prediction when using manual mode</span>
+                                </div>
 
-                    <div class="form-group">
-                        <label for="avg_hr">Average HR (optional):</label>
-                        <input type="number" id="avg_hr" min="30" max="180" step="1" value="75">
-                        <span class="help-text">Used for manual summary if user did not wear watch</span>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="hrv_avg">HRV Average (RMSSD):</label>
-                        <input type="number" id="hrv_avg" min="1" max="300" step="0.1" value="53" required>
-                        <span class="help-text">Required by your notebook model for prediction</span>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="backend_url">Backend URL:</label>
-                        <input type="text" id="backend_url" value="https://final-year-project-production-1acf.up.railway.app" required>
-                        <span class="help-text">Change to Railway URL when deployed</span>
-                    </div>
+                                <div class="form-group">
+                                    <label for="resting_hr">Resting Heart Rate (optional):</label>
+                                    <input type="number" id="resting_hr" min="30" max="120" step="1" value="60">
+                                    <span class="help-text">Optional, but improves prediction context</span>
+                                </div>
+                            </div>
+                        </div>
 
                     <div id="syncStatusPanel" class="sync-status-panel">
                         <h3>Server Auto-Sync Status</h3>
