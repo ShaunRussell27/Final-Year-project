@@ -160,10 +160,23 @@ class NotebookBurnoutModelService:
     @staticmethod
     def _is_stress_label(label: object) -> bool:
         label_text = str(label).strip().lower()
-        if label_text in {"1", "1.0", "true", "stressed", "stress", "burnout", "high"}:
+        if label_text in {
+            "1",
+            "1.0",
+            "2",
+            "2.0",
+            "true",
+            "stressed",
+            "stress",
+            "burnout",
+            "high",
+            "medium",
+            "interruption",
+            "time pressure",
+        }:
             return True
         try:
-            return int(float(label_text)) == 1
+            return int(float(label_text)) > 0
         except ValueError:
             return False
 

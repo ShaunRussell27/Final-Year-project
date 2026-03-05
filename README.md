@@ -100,9 +100,16 @@ python backend/sync_garmin_to_railway.py
 python backend/train_model.py
 ```
 
+- Train/update calibrated notebook classifier artifact:
+
+```bash
+python backend/train_notebook_model.py
+```
+
 - Notebook model files are expected at:
   - `notebooks/burnout_model.pkl`
   - `notebooks/scaler.pkl`
+  - `notebooks/burnout_model_metrics.json` (evaluation summary)
 
 If notebook files are missing, `/risk/notebook` returns a 503 and clients can fall back to `/risk/latest`.
 

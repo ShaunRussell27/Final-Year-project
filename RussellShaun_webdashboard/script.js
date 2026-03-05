@@ -1,4 +1,4 @@
-// ==================== TAB SWITCHING ====================
+// Tab switching logic
 const tabBtns = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
 
@@ -25,7 +25,7 @@ tabBtns.forEach(btn => {
 
 activateTab('burnout');
 
-// ==================== BURNOUT DETECTION FORM ====================
+// BURNOUT DETECTION Tab
 const burnoutForm = document.getElementById('burnoutForm');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const debugStatus = document.getElementById('debugStatus');
@@ -382,9 +382,13 @@ function displayResults(riskResult, summaryResult) {
     const confidenceSuffix = Number.isFinite(riskResult?.confidence)
         ? `<br><small>Model confidence: ${Number(riskResult.confidence).toFixed(2)}%</small>`
         : '';
+    const assessedDate = riskResult?.date || summaryResult?.date || null;
+    const assessedDateSuffix = assessedDate
+        ? `<br><small>Data date assessed: ${assessedDate}</small>`
+        : '';
 
     resultBox.className = `result-box ${riskClass}`;
-    resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}`;
+    resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}${assessedDateSuffix}`;
     
     // Generate recommendations
     let recommendations = getRecommendations(riskResult, summaryResult, riskLevel);
