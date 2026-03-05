@@ -238,6 +238,16 @@ class NotebookBurnoutModelService:
             f"stressed-class probability: {confidence:.2f}%",
         ]
 
+        if hrv_avg < 40:
+            explanation.append("low HRV")
+        elif hrv_avg < 55:
+            explanation.append("HRV below usual recovery range")
+
+        if hr_value >= 75:
+            explanation.append("high resting HR")
+        elif hr_value >= 68:
+            explanation.append("resting HR above typical baseline")
+
         return NotebookModelPrediction(
             risk_score=risk_score,
             risk_label=risk_label,

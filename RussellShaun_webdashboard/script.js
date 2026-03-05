@@ -387,7 +387,7 @@ function showError(message) {
 
     resultSection.style.display = 'block';
     resultBox.className = 'result-box high';
-    resultBox.innerHTML = '❌ <br> Burnout Risk: <strong>UNAVAILABLE</strong>';
+    resultBox.innerHTML = '<br> Burnout Risk: <strong>UNAVAILABLE</strong>';
     recommendationsBox.innerHTML = `<div class="error">${message}</div>`;
 }
 
@@ -427,13 +427,52 @@ function displayResults(riskResult, summaryResult) {
     const assessedDateSuffix = assessedDate
         ? `<br><small>Data date assessed: ${assessedDate}</small>`
         : '';
+    const topDrivers = getTopDrivers(riskResult, summaryResult);
+    const topDriversText = topDrivers.length
+        ? topDrivers.join('; ')
+        : 'insufficient signal in current data';
+    const topDriversSuffix = `<br><small>Top drivers: ${topDriversText}</small>`;
 
     resultBox.className = `result-box ${riskClass}`;
-    resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}${assessedDateSuffix}`;
+    resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}${assessedDateSuffix}${topDriversSuffix}`;
     
     // Generate recommendations
     let recommendations = getRecommendations(riskResult, summaryResult, riskLevel);
     recommendationsBox.innerHTML = recommendations;
+}
+
+function getTopDrivers(riskResult, summaryResult) {
+    const drivers = [];
+
+    const addDriver = (label) => {
+        if (!drivers.includes(label) && drivers.length < 3) {
+            drivers.push(label);
+        }
+    };
+
+    const factors = Array.isArray(riskResult?.explanation) ? riskResult.explanation : [];
+    factors.forEach((factor) => {
+        const text = String(factor).toLowerCase();
+        if (text.includes('low hrv') || text.includes('hrv below')) {
+            addDriver('low HRV');
+        } else if (text.includes('high resting hr') || text.includes('resting heart rate')) {
+            addDriver('high resting HR');
+        } else if (text.includes('sleep')) {
+            addDriver('sleep drop');
+        }
+    });
+
+    const sleepMinutes = summaryResult?.sleep_minutes;
+    if (Number.isFinite(sleepMinutes) && sleepMinutes > 0 && sleepMinutes < 420) {
+        addDriver('sleep drop');
+    }
+
+    const restingHr = summaryResult?.resting_hr;
+    if (Number.isFinite(restingHr) && restingHr >= 75) {
+        addDriver('high resting HR');
+    }
+
+    return drivers.slice(0, 3);
 }
 
 function getRecommendations(riskResult, summaryResult, riskLevel) {
