@@ -39,6 +39,7 @@ const hrvAvgInput = document.getElementById('hrv_avg');
 let lastResolvedWatchMetrics = {
     restingHr: null,
     hrvAvg: null,
+    dataDate: null,
 };
 
 function setStatus(text) {
@@ -159,6 +160,8 @@ setManualMetricsVisibility();
 async function resolveWatchMetrics(backendUrl, userId) {
     let restingHr = null;
     let hrvAvg = null;
+    let dataDate = null;
+    let summaryDate = null;
 
     try {
         const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}`);
@@ -166,6 +169,9 @@ async function resolveWatchMetrics(backendUrl, userId) {
             const summary = await summaryResponse.json();
             if (Number.isFinite(summary?.resting_hr)) {
                 restingHr = Number(summary.resting_hr);
+            }
+            if (typeof summary?.date === 'string' && summary.date) {
+                summaryDate = summary.date;
             }
         }
     } catch (error) {
@@ -177,11 +183,34 @@ async function resolveWatchMetrics(backendUrl, userId) {
         if (syncResponse.ok) {
             const syncData = await syncResponse.json();
             const latestDayData = syncData?.sync?.last_result?.latest_day_data || {};
+            const daySnapshots = Array.isArray(syncData?.sync?.last_result?.garmin_day_snapshots)
+                ? syncData.sync.last_result.garmin_day_snapshots
+                : [];
+
+            const latestValidSnapshot = [...daySnapshots]
+                .reverse()
+                .find((day) => Number.isFinite(day?.hrv_avg) && day.hrv_avg > 0);
+
+            if (latestValidSnapshot) {
+                if (Number.isFinite(latestValidSnapshot?.hrv_avg)) {
+                    hrvAvg = Number(latestValidSnapshot.hrv_avg);
+                }
+                if (Number.isFinite(latestValidSnapshot?.resting_hr)) {
+                    restingHr = Number(latestValidSnapshot.resting_hr);
+                }
+                if (typeof latestValidSnapshot?.date === 'string' && latestValidSnapshot.date) {
+                    dataDate = latestValidSnapshot.date;
+                }
+            }
+
             if (Number.isFinite(latestDayData?.hrv_avg)) {
                 hrvAvg = Number(latestDayData.hrv_avg);
             }
             if (!Number.isFinite(restingHr) && Number.isFinite(latestDayData?.resting_hr)) {
                 restingHr = Number(latestDayData.resting_hr);
+            }
+            if (!dataDate && typeof latestDayData?.date === 'string' && latestDayData.date) {
+                dataDate = latestDayData.date;
             }
         }
     } catch (error) {
@@ -191,6 +220,7 @@ async function resolveWatchMetrics(backendUrl, userId) {
     const resolved = {
         restingHr: Number.isFinite(restingHr) ? restingHr : null,
         hrvAvg: Number.isFinite(hrvAvg) ? hrvAvg : null,
+        dataDate: dataDate || summaryDate || null,
     };
 
     lastResolvedWatchMetrics = resolved;
@@ -229,14 +259,20 @@ window.runBurnoutAnalysis = async (e) => {
             return;
         }
 
-        let restingHr = Number.isFinite(manualRestingHr) ? manualRestingHr : null;
-        let hrvAvg = Number.isFinite(manualHrvAvg) ? manualHrvAvg : null;
+        let restingHr = metricSource === 'manual' && Number.isFinite(manualRestingHr)
+            ? manualRestingHr
+            : null;
+        let hrvAvg = metricSource === 'manual' && Number.isFinite(manualHrvAvg)
+            ? manualHrvAvg
+            : null;
+        let watchDataDate = null;
 
         if (metricSource === 'watch') {
             setStatus('reading watch metrics');
             const watchMetrics = await resolveWatchMetrics(backendUrl, userId);
             restingHr = watchMetrics.restingHr ?? restingHr;
             hrvAvg = watchMetrics.hrvAvg ?? hrvAvg;
+            watchDataDate = watchMetrics.dataDate || null;
 
             if (restingHrInput && Number.isFinite(restingHr)) {
                 restingHrInput.value = String(restingHr);
@@ -259,33 +295,38 @@ window.runBurnoutAnalysis = async (e) => {
     
         try {
             analyzeBtn.disabled = true;
-            setStatus('sending ingest');
-        // Optional manual ingest so dashboard can work without iOS upload.
-        const today = new Date().toISOString().slice(0, 10);
-        const ingestPayload = {
-            user_id: userId,
-            date: today,
-            steps: null,
-            sleep_minutes: null,
-            resting_hr: Number.isFinite(restingHr) ? restingHr : null,
-            avg_hr: null,
-            hr_samples_count: null,
-        };
+            const today = new Date().toISOString().slice(0, 10);
+            const analysisDate = metricSource === 'watch'
+                ? watchDataDate
+                : today;
 
-            const ingestResponse = await fetch(`${backendUrl}/ingest/healthkit`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(ingestPayload)
-            });
-            if (!ingestResponse.ok) {
-                const body = await ingestResponse.text();
-                throw new Error(`Ingest failed (${ingestResponse.status})${body ? `: ${body}` : ''}`);
+            if (metricSource === 'manual') {
+                setStatus('sending ingest');
+                const ingestPayload = {
+                    user_id: userId,
+                    date: analysisDate,
+                    steps: null,
+                    sleep_minutes: null,
+                    resting_hr: Number.isFinite(restingHr) ? restingHr : null,
+                    avg_hr: null,
+                    hr_samples_count: null,
+                };
+
+                const ingestResponse = await fetch(`${backendUrl}/ingest/healthkit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ingestPayload)
+                });
+                if (!ingestResponse.ok) {
+                    const body = await ingestResponse.text();
+                    throw new Error(`Ingest failed (${ingestResponse.status})${body ? `: ${body}` : ''}`);
+                }
             }
 
             setStatus('requesting notebook-model risk');
             const notebookPayload = {
                 user_id: userId,
-                date: today,
+                date: analysisDate,
                 resting_hr: Number.isFinite(restingHr) ? restingHr : null,
                 avg_hr: null,
                 hrv_avg: hrvAvg,
@@ -396,34 +437,34 @@ function displayResults(riskResult, summaryResult) {
 }
 
 function getRecommendations(riskResult, summaryResult, riskLevel) {
-    let html = '<h3>💡 Recommendations:</h3><ul>';
+    let html = '<h3>Recommendations:</h3><ul>';
 
     const sleepMinutes = summaryResult?.sleep_minutes || 0;
     const steps = summaryResult?.steps || 0;
     const restingHr = summaryResult?.resting_hr || 0;
 
     if (sleepMinutes > 0 && sleepMinutes < 420) {
-        html += '<li>📅 Aim for 7-9 hours of quality sleep each night</li>';
+        html += '<li>Aim for 7-9 hours of quality sleep each night</li>';
     }
 
     if (restingHr > 75) {
-        html += '<li>❤️ Resting HR is elevated. Prioritize recovery and reduce high-intensity load for a day or two</li>';
+        html += '<li>Resting HR is elevated. Prioritize recovery and reduce high-intensity load for a day or two</li>';
     }
 
     if (steps < 8000) {
-        html += '<li>🚶 Increase daily activity to at least 8,000 steps</li>';
+        html += '<li>Increase daily activity to at least 8,000 steps</li>';
     }
 
     if (Array.isArray(riskResult?.explanation) && riskResult.explanation.length) {
-        html += `<li>🧠 Model factors: ${riskResult.explanation.join('; ')}</li>`;
+        html += `<li>Model factors: ${riskResult.explanation.join('; ')}</li>`;
     }
 
     if (riskLevel === 'HIGH') {
-        html += '<li>🏥 Consider speaking with a mental health professional</li>';
+        html += '<li>Consider speaking with a mental health professional</li>';
     }
     
     if (riskLevel === 'LOW') {
-        html += '<li>✨ Great job maintaining your well-being! Keep up the healthy habits</li>';
+        html += '<li>Great job maintaining your well-being! Keep up the healthy habits</li>';
     }
     
     html += '</ul>';
