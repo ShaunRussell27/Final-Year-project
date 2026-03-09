@@ -1,5 +1,5 @@
 {
-  "trained_at": "2026-03-05T20:26:17.883646+00:00",
+  "trained_at": "2026-03-09T14:39:09.210007+00:00",
   "feature_columns": [
     "HR",
     "RMSSD",
@@ -7,15 +7,15 @@
     "MEAN_RR",
     "MEDIAN_RR"
   ],
-  "target_definition": "Condition Label != 0 => stressed (1)",
+  "target_definition": "Condition Label == 0 => stressed (1)",
   "train_rows": 313310,
   "test_rows": 39164,
-  "stress_prevalence_train": 0.45766174076792954,
-  "stress_prevalence_test": 0.4558778470023491,
+  "stress_prevalence_train": 0.5423382592320705,
+  "stress_prevalence_test": 0.5441221529976509,
   "roc_auc": 0.6898238919707307,
   "brier_score": 0.22266801518705567,
   "accuracy": 0.6128842814829946,
-  "precision": 0.5909735828660225,
-  "recall": 0.489918225607707,
-  "f1": 0.5357219415097229
+  "precision": 0.6261954603291877,
+  "recall": 0.7159080244016893,
+  "f1": 0.6680533356687759
 }

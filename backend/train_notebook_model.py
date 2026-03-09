@@ -32,7 +32,8 @@ def _load_frame(path: str) -> pd.DataFrame:
 
 
 def _to_binary_stress_label(series: pd.Series) -> pd.Series:
-    return (series != 0).astype(int)
+    # Dataset encoding used by this project: Condition Label 0 denotes stressed.
+    return (series == 0).astype(int)
 
 
 def train_notebook_model(train_csv: str, test_csv: str, model_out: str, scaler_out: str, metrics_out: str) -> None:
@@ -58,7 +59,7 @@ def train_notebook_model(train_csv: str, test_csv: str, model_out: str, scaler_o
     metrics = {
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "feature_columns": FEATURE_COLUMNS,
-        "target_definition": "Condition Label != 0 => stressed (1)",
+        "target_definition": "Condition Label == 0 => stressed (1)",
         "train_rows": int(len(train_df)),
         "test_rows": int(len(test_df)),
         "stress_prevalence_train": float(y_train.mean()),
