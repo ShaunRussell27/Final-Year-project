@@ -13,113 +13,14 @@
             <p>Monitor your well-being with AI-powered insights</p>
         </div>
 
-        <!-- Tab Navigation -->
         <div class="tab-nav">
             <button type="button" class="tab-btn active" data-tab="home">Home</button>
             <button type="button" class="tab-btn" data-tab="burnout">Burnout Detection</button>
-            <a href="chatbot.html" class="tab-btn-link">Chatbot</a>
+            <button type="button" class="tab-btn" data-tab="chatbot">Chatbot</button>
         </div>
 
-        <div class="main-content">
-            <!-- Home Tab -->
-            <div id="home" class="tab-content active">
-                <div class="home-section">
-                    <h2>Welcome to the AI Burnout Detection System</h2>
-                    <p>This platform helps you monitor your well-being and identify possible burnout risks early.</p>
-                    
-                    <div class="features">
-                        <div class="feature-card">
-                            <div class="feature-icon">📊</div>
-                            <h3>Track Metrics</h3>
-                            <p>Monitor sleep, heart rate variability, activity levels, and stress.</p>
-                        </div>
-                        <div class="feature-card">
-                            <div class="feature-icon">🤖</div>
-                            <h3>AI Analysis</h3>
-                            <p>Get instant burnout risk assessment powered by machine learning.</p>
-                        </div>
-                        <div class="feature-card">
-                            <div class="feature-icon">💡</div>
-                            <h3>Personalized Tips</h3>
-                            <p>Receive tailored recommendations based on your health data.</p>
-                        </div>
-                        <div class="feature-card">
-                            <div class="feature-icon">💬</div>
-                            <h3>AI Chatbot</h3>
-                            <p>Chat with our AI assistant for wellness advice anytime.</p>
-                        </div>
-                    </div>
-
-                    <div class="info-box">
-                        <h3>How It Works</h3>
-                        <ol>
-                            <li>Enter your health metrics in the Burnout Detection tab</li>
-                            <li>Our AI analyses your data using machine learning</li>
-                            <li>Get your burnout risk level</li>
-                            <li>Receive personalized recommendations for improvement</li>
-                            <li>Chat with our AI assistant for wellness support</li>
-                        </ol>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Burnout Detection Tab -->
-            <div id="burnout" class="tab-content">
-                <div class="form-section">
-                    <h2>Get Burnout Summary (Notebook AI Model via FastAPI)</h2>
-                    <p>Uses notebook model files: <strong>burnout_model.pkl</strong> + <strong>scaler.pkl</strong>.</p>
-                    <div id="burnoutForm">
-                        <div class="burnout-grid">
-                            <div class="form-group">
-                                <label for="user_id">User ID:</label>
-                                <input type="text" id="user_id" value="shaun" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="backend_url">Backend URL:</label>
-                                <input type="text" id="backend_url" value="https://final-year-project-production-1acf.up.railway.app" required>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label for="metrics_source">Metrics Source:</label>
-                                <select id="metrics_source" class="select-input">
-                                    <option value="watch" selected>Use latest watch data (recommended)</option>
-                                    <option value="manual">Enter metrics manually</option>
-                                </select>
-                                <span class="help-text">Watch mode auto-reads values from your backend sync; manual mode lets you override.</span>
-                            </div>
-
-                            <div id="manualMetrics" class="burnout-grid full-width hidden">
-                                <div class="form-group">
-                                    <label for="hrv_avg">HRV Average (RMSSD):</label>
-                                    <input type="number" id="hrv_avg" min="1" max="300" step="0.1" value="53">
-                                    <span class="help-text">Required for prediction when using manual mode</span>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="resting_hr">Resting Heart Rate (optional):</label>
-                                    <input type="number" id="resting_hr" min="30" max="120" step="1" value="60">
-                                    <span class="help-text">Optional, but improves prediction context</span>
-                                </div>
-                            </div>
-                        </div>
-
-                    <div id="syncStatusPanel" class="sync-status-panel">
-                        <h3>Server Auto-Sync Status</h3>
-                        <p id="syncStatusText" class="help-text">Checking server sync status...</p>
-                    </div>
-
-                        <button type="button" id="analyzeBtn" class="btn-analyze" onclick="window.runBurnoutAnalysis && window.runBurnoutAnalysis(event)">Analyze Burnout Risk</button>
-                        <span id="debugStatus" class="help-text">Status: idle</span>
-                    </div>
-
-                    <div class="result-section" id="resultSection" style="display:none;">
-                        <h2>Burnout Risk Assessment</h2>
-                        <div id="resultBox" class="result-box"></div>
-                        <div id="recommendations" class="recommendations"></div>
-                    </div>
-                </div>
-            </div>
+        <div class="main-content" id="app">
+            <div class="loading">Loading section...</div>
         </div>
     </div>
 
