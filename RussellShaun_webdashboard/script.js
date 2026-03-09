@@ -327,22 +327,26 @@ function initBurnoutSection() {
         const factors = Array.isArray(riskResult?.explanation) ? riskResult.explanation : [];
         factors.forEach((factor) => {
             const text = String(factor).toLowerCase();
-            if (text.includes('low hrv') || text.includes('hrv below')) {
+
+            // Only keep strong signals as "top drivers".
+            if (text.includes('low hrv')) {
                 addDriver('low HRV');
-            } else if (text.includes('high resting hr') || text.includes('resting heart rate')) {
+            } else if (text.includes('high resting hr') || text.includes('significantly higher than baseline')) {
                 addDriver('high resting HR');
-            } else if (text.includes('sleep')) {
+            } else if (text.includes('sleep is much lower') || text.includes('sleep drop')) {
                 addDriver('sleep drop');
+            } else if (text.includes('steps are far below')) {
+                addDriver('activity drop');
             }
         });
 
         const sleepMinutes = summaryResult?.sleep_minutes;
-        if (Number.isFinite(sleepMinutes) && sleepMinutes > 0 && sleepMinutes < 420) {
+        if (Number.isFinite(sleepMinutes) && sleepMinutes > 0 && sleepMinutes < 360) {
             addDriver('sleep drop');
         }
 
         const restingHr = summaryResult?.resting_hr;
-        if (Number.isFinite(restingHr) && restingHr >= 75) {
+        if (Number.isFinite(restingHr) && restingHr >= 80) {
             addDriver('high resting HR');
         }
 
@@ -422,10 +426,9 @@ function initBurnoutSection() {
             ? `<br><small>Data date assessed: ${assessedDate}</small>`
             : '';
         const topDrivers = getTopDrivers(riskResult, summaryResult);
-        const topDriversText = topDrivers.length
-            ? topDrivers.join('; ')
-            : 'insufficient signal in current data';
-        const topDriversSuffix = `<br><small>Top drivers: ${topDriversText}</small>`;
+        const topDriversSuffix = topDrivers.length
+            ? `<br><small>Top drivers: ${topDrivers.join('; ')}</small>`
+            : '';
 
         resultBox.className = `result-box ${riskClass}`;
         resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}${assessedDateSuffix}${topDriversSuffix}`;
