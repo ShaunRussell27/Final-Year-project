@@ -42,3 +42,16 @@ class NotebookPredictIn(BaseModel):
     resting_hr: Optional[float] = None
     avg_hr: Optional[float] = None
     hrv_avg: float = Field(..., examples=[53.0])
+
+
+class ChatRequestIn(BaseModel):
+    user_id: str = Field(..., examples=["shaun"])
+    message: str = Field(..., examples=["How am I doing today?"])
+
+
+class ChatResponseOut(BaseModel):
+    reply: str
+    used_watch_data: bool = False
+    context_date: Optional[str] = None
+    risk_label: Optional[str] = None
+    risk_score: Optional[int] = None

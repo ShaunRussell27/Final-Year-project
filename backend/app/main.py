@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from .db import get_db, engine
 from .models import Base, DailySummary
 from .ml_service import BurnoutModelService, NotebookBurnoutModelService
-from .schemas import HealthKitIn, DailySummaryOut, RiskOut, NotebookPredictIn
+from .schemas import HealthKitIn, DailySummaryOut, RiskOut, NotebookPredictIn, ChatRequestIn, ChatResponseOut
 
 app = FastAPI(title="Burnout Project Backend")
 
@@ -246,6 +246,82 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
         explanation=factors,
     )
 
+
+def _build_chatbot_reply(message: str, summary: DailySummary | None, risk: RiskOut | None) -> str:
+    text = message.lower()
+
+    if summary is None or risk is None:
+        return (
+            "I can help with stress, sleep, and burnout prevention. "
+            "I could not find your latest watch data yet, so please sync data first and I can personalize advice."
+        )
+
+    parts: list[str] = []
+    parts.append(
+        f"Based on your latest watch data from {summary.date}, your burnout risk is {risk.risk_label} ({risk.risk_score}%)."
+    )
+
+    guidance: list[str] = []
+    if summary.sleep_minutes is not None:
+        if summary.sleep_minutes < 420:
+            guidance.append("Your sleep is below 7 hours; aim for 7-9 hours and keep a fixed bedtime this week.")
+        else:
+            guidance.append("Your sleep duration is in a healthy range; protect this routine.")
+
+    if summary.resting_hr is not None:
+        if summary.resting_hr >= 75:
+            guidance.append("Resting heart rate is elevated; reduce intense training and prioritize recovery today.")
+        else:
+            guidance.append("Resting heart rate looks stable; continue with balanced training and recovery.")
+
+    if summary.steps is not None:
+        if summary.steps < 8000:
+            guidance.append("Daily movement is low; add a 20-30 minute walk to support stress recovery.")
+        else:
+            guidance.append("Your activity level is solid; keep daily movement consistent.")
+
+    if "what should i do" in text or "plan" in text or "improve" in text:
+        parts.append("Suggested plan for today:")
+        parts.extend(guidance[:3] if guidance else ["Keep sleep, activity, and stress routines consistent."])
+    elif "sleep" in text:
+        parts.append(next((g for g in guidance if "sleep" in g.lower()), "Focus on a regular sleep schedule and limit screens before bed."))
+    elif "stress" in text or "burnout" in text:
+        parts.append("Do a short recovery block now: 5 minutes slow breathing, 10 minutes light walk, and a lower workload block if possible.")
+        if risk.explanation:
+            parts.append(f"Main risk signals: {'; '.join(risk.explanation[:2])}.")
+    else:
+        parts.append("Ask me for a daily plan, sleep advice, or stress recovery and I will tailor it to your watch data.")
+
+    return " ".join(parts)
+
+
+def _latest_summary_and_risk(user_id: str, db: Session) -> tuple[DailySummary | None, RiskOut | None]:
+    rows = (
+        db.query(DailySummary)
+        .filter(DailySummary.user_id == user_id)
+        .order_by(DailySummary.date.desc())
+        .limit(8)
+        .all()
+    )
+    if not rows:
+        return None, None
+
+    latest = rows[0]
+    baseline_rows = rows[1:8] if len(rows) > 1 else [latest]
+
+    model_prediction = model_service.predict(latest, baseline_rows)
+    if model_prediction is not None:
+        risk = RiskOut(
+            user_id=latest.user_id,
+            date=latest.date,
+            risk_label=model_prediction.risk_label,
+            risk_score=model_prediction.risk_score,
+            explanation=model_prediction.explanation,
+        )
+        return latest, risk
+
+    return latest, _compute_risk(latest, baseline_rows)
+
 @app.post("/ingest/healthkit", response_model=DailySummaryOut)
 def ingest_healthkit(payload: HealthKitIn, db: Session = Depends(get_db)):
     collected_at = payload.collected_at or datetime.now(timezone.utc)
@@ -399,3 +475,17 @@ def summaries(user_id: str, limit: int = 30, db: Session = Depends(get_db)):
         })
         for r in rows
     ]
+
+
+@app.post("/chatbot/coach", response_model=ChatResponseOut)
+def chatbot_coach(payload: ChatRequestIn, db: Session = Depends(get_db)):
+    latest, risk = _latest_summary_and_risk(payload.user_id, db)
+    reply = _build_chatbot_reply(payload.message, latest, risk)
+
+    return ChatResponseOut(
+        reply=reply,
+        used_watch_data=latest is not None,
+        context_date=latest.date if latest else None,
+        risk_label=risk.risk_label if risk else None,
+        risk_score=risk.risk_score if risk else None,
+    )

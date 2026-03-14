@@ -434,6 +434,28 @@ input[type="range"] {
     font-size: 20px;
 }
 
+.chatbot-config {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 12px;
+    border: 1px solid #e1e5f2;
+    border-radius: 8px;
+    background: #f7f9ff;
+}
+
+.chatbot-config .form-group {
+    margin-bottom: 0;
+}
+
+.chatbot-config input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #d7dceb;
+    border-radius: 6px;
+}
+
 .chat-history {
     flex: 1;
     overflow-y: auto;

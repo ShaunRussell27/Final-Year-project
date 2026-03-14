@@ -29,13 +29,59 @@ function getBotResponse(userMessage) {
     return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
 }
 
+function normalizeBackendUrl(urlValue) {
+    if (!urlValue || typeof urlValue !== 'string') {
+        return '';
+    }
+    return urlValue.trim().replace(/\/$/, '');
+}
+
+async function getPersonalizedBotResponse(userMessage, userId, backendUrl) {
+    if (!backendUrl || !userId) {
+        return null;
+    }
+
+    const response = await fetch(`${backendUrl}/chatbot/coach`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            user_id: userId,
+            message: userMessage,
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    const body = await response.json();
+    if (!body?.reply || typeof body.reply !== 'string') {
+        return null;
+    }
+
+    return body.reply;
+}
+
 window.initChatbot = function initChatbot() {
     const chatInput = document.getElementById('chatInput');
     const chatSendBtn = document.getElementById('chatSendBtn');
     const chatHistory = document.getElementById('chatHistory');
+    const chatUserId = document.getElementById('chatUserId');
+    const chatBackendUrl = document.getElementById('chatBackendUrl');
 
     if (!chatInput || !chatSendBtn || !chatHistory) {
         return;
+    }
+
+    const burnoutUserId = document.getElementById('user_id');
+    const burnoutBackendUrl = document.getElementById('backend_url');
+
+    if (chatUserId && burnoutUserId?.value && !chatUserId.value.trim()) {
+        chatUserId.value = burnoutUserId.value.trim();
+    }
+
+    if (chatBackendUrl && burnoutBackendUrl?.value && !chatBackendUrl.value.trim()) {
+        chatBackendUrl.value = burnoutBackendUrl.value.trim();
     }
 
     function addMessage(text, isUser) {
@@ -51,7 +97,7 @@ window.initChatbot = function initChatbot() {
         chatHistory.scrollTop = chatHistory.scrollHeight;
     }
 
-    function sendChatMessage() {
+    async function sendChatMessage() {
         const message = chatInput.value.trim();
         if (message === '') {
             return;
@@ -60,15 +106,26 @@ window.initChatbot = function initChatbot() {
         addMessage(message, true);
         chatInput.value = '';
 
-        setTimeout(() => {
-            addMessage(getBotResponse(message), false);
-        }, 500);
+        const userId = chatUserId?.value?.trim() || '';
+        const backendUrl = normalizeBackendUrl(chatBackendUrl?.value);
+
+        try {
+            const personalized = await getPersonalizedBotResponse(message, userId, backendUrl);
+            if (personalized) {
+                addMessage(personalized, false);
+                return;
+            }
+        } catch (error) {
+            console.warn('Falling back to local chatbot response:', error);
+        }
+
+        addMessage(getBotResponse(message), false);
     }
 
     chatSendBtn.onclick = sendChatMessage;
-    chatInput.onkeypress = (event) => {
+    chatInput.onkeypress = async (event) => {
         if (event.key === 'Enter') {
-            sendChatMessage();
+            await sendChatMessage();
         }
     };
 
