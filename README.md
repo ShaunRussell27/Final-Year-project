@@ -121,6 +121,48 @@ If notebook files are missing, `/risk/notebook` returns a 503 and clients can fa
   - Local fallback: SQLite (`sqlite:///./burnout.db`)
   - Hosted: Postgres via `DATABASE_URL` (auto-normalized to `postgresql://`)
 
+## Running the Tests
+
+The test suite covers all API endpoints, ML model services, risk scoring logic, schema validation, and chatbot reply logic (63 tests total). No live server or external database is needed — tests run against an in-memory SQLite database automatically.
+
+### 1) Navigate to the backend folder
+
+```bash
+cd backend
+```
+
+### 2) Run all tests
+
+```bash
+python -m pytest tests/test_backend.py -v
+```
+
+Expected output: `63 passed` in approximately 7–10 seconds.
+
+### Useful options
+
+```bash
+# Shorter tracebacks on failure
+python -m pytest tests/test_backend.py -v --tb=short
+
+# Run only a specific test class
+python -m pytest tests/test_backend.py::TestComputeRiskLogic -v
+
+# Run only a specific test
+python -m pytest tests/test_backend.py::TestChatbotCoach::test_chatbot_with_data_returns_personalized_reply -v
+
+# Quiet summary only
+python -m pytest tests/test_backend.py -q
+```
+
+### Test file location
+
+```
+backend/
+  tests/
+    test_backend.py   ← all 63 tests
+```
+
 ## Project Status
 
 This README reflects the current burnout detection stack in this repository and replaces the old scrapped project documentation.
