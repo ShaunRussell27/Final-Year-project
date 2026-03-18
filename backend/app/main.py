@@ -206,6 +206,9 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
         elif latest.avg_stress >= 50:
             score += 8
             factors.append(f"watch stress score is above normal ({latest.avg_stress}/100)")
+        elif latest.avg_stress <= 25:
+            score -= 8
+            factors.append(f"watch stress score is low ({latest.avg_stress}/100)")
 
     if latest.body_battery_max is not None:
         if latest.body_battery_max <= 5:
@@ -217,6 +220,9 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
         elif latest.body_battery_max <= 40:
             score += 10
             factors.append(f"body battery is low ({latest.body_battery_max}/100)")
+        elif latest.body_battery_max >= 80:
+            score -= 8
+            factors.append(f"body battery is high ({latest.body_battery_max}/100)")
 
     if latest.sleep_minutes is not None and baseline_sleep is not None and baseline_sleep > 0:
         sleep_ratio = latest.sleep_minutes / baseline_sleep
@@ -241,6 +247,9 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
         elif hr_delta >= 2:
             score += 10
             factors.append("resting heart rate is slightly above baseline")
+        elif hr_delta <= -4:
+            score -= 8
+            factors.append("resting heart rate is well below baseline — good recovery sign")
 
     if latest.steps is not None and baseline_steps is not None and baseline_steps > 0:
         steps_ratio = latest.steps / baseline_steps
@@ -250,6 +259,9 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
         elif steps_ratio < 0.75:
             score += 12
             factors.append("steps are below baseline")
+        elif steps_ratio >= 1.25:
+            score -= 5
+            factors.append("activity level is well above baseline")
 
     score = max(0, min(100, score))
 
@@ -526,6 +538,9 @@ def risk_notebook(payload: NotebookPredictIn):
         elif payload.body_battery_max <= 40:
             adjustment += 12
             extra_factors.append(f"body battery low ({payload.body_battery_max}/100)")
+        elif payload.body_battery_max >= 80:
+            adjustment -= 10
+            extra_factors.append(f"body battery is high ({payload.body_battery_max}/100)")
 
     if payload.work_hours is not None:
         if payload.work_hours > 10:
@@ -534,6 +549,9 @@ def risk_notebook(payload: NotebookPredictIn):
         elif payload.work_hours > 8:
             adjustment += 6
             extra_factors.append(f"extended workday ({payload.work_hours:.0f} hrs)")
+        elif payload.work_hours <= 6:
+            adjustment -= 5
+            extra_factors.append(f"short workday ({payload.work_hours:.0f} hrs)")
 
     if payload.mood_score is not None:
         if payload.mood_score <= 2:
