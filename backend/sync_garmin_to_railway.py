@@ -94,11 +94,29 @@ def _get_client(email: str, password: str, token_store: str) -> Garmin:
     # so we don't have to call login() on every container restart.
     _write_token_from_env(token_path)
 
-    try:
-        client.garth.resume(token_path)
-    except Exception:
+    token_loaded = False
+    # garth>=0.4 uses .load(); older versions used .resume() — try both
+    for load_method_name in ("load", "resume"):
+        load_fn = getattr(client.garth, load_method_name, None)
+        if load_fn is None:
+            continue
+        try:
+            load_fn(token_path)
+            token_loaded = True
+            break
+        except Exception:
+            pass
+
+    if not token_loaded:
         client.login()
-        client.garth.dump(token_path)
+        # Save token to disk
+        for dump_method_name in ("dump",):
+            dump_fn = getattr(client.garth, dump_method_name, None)
+            if dump_fn:
+                try:
+                    dump_fn(token_path)
+                except Exception:
+                    pass
         # Print the new token so the user can set GARMIN_TOKEN_JSON on Railway
         # to prevent rate-limit (429) errors on future restarts.
         token_json = _read_token_to_json(token_path)
