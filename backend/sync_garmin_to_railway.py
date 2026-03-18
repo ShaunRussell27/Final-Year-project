@@ -1,6 +1,7 @@
 import datetime as dt
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,36 @@ def _get_api_base_url() -> str:
     )
 
 
+def _write_token_from_env(token_path: str) -> bool:
+    """Restore garth token files from GARMIN_TOKEN_JSON env var (survives Railway restarts)."""
+    token_json_env = os.getenv("GARMIN_TOKEN_JSON", "").strip()
+    if not token_json_env:
+        return False
+    try:
+        token_data: dict[str, str] = json.loads(token_json_env)
+        os.makedirs(token_path, exist_ok=True)
+        for filename, contents in token_data.items():
+            with open(os.path.join(token_path, filename), "w", encoding="utf-8") as f:
+                f.write(contents)
+        return True
+    except Exception:
+        return False
+
+
+def _read_token_to_json(token_path: str) -> str | None:
+    """Serialize garth token directory to a JSON string for storage as an env var."""
+    try:
+        token_data: dict[str, str] = {}
+        for fname in os.listdir(token_path):
+            fpath = os.path.join(token_path, fname)
+            if os.path.isfile(fpath):
+                with open(fpath, encoding="utf-8") as f:
+                    token_data[fname] = f.read()
+        return json.dumps(token_data)
+    except Exception:
+        return None
+
+
 def _get_client(email: str, password: str, token_store: str) -> Garmin:
     client = Garmin(email, password)
 
@@ -59,11 +90,25 @@ def _get_client(email: str, password: str, token_store: str) -> Garmin:
     token_parent = str(Path(token_path).expanduser().parent)
     os.makedirs(token_parent, exist_ok=True)
 
+    # Railway filesystems are ephemeral — restore token from env var if available
+    # so we don't have to call login() on every container restart.
+    _write_token_from_env(token_path)
+
     try:
         client.garth.resume(token_path)
     except Exception:
         client.login()
         client.garth.dump(token_path)
+        # Print the new token so the user can set GARMIN_TOKEN_JSON on Railway
+        # to prevent rate-limit (429) errors on future restarts.
+        token_json = _read_token_to_json(token_path)
+        if token_json:
+            print(
+                "\n[GARMIN AUTH] Fresh login performed. To avoid 429 rate-limit errors "
+                "on Railway restarts, set the following value as the GARMIN_TOKEN_JSON "
+                "environment variable in your Railway service settings:\n"
+                f"{token_json}\n"
+            )
 
     return client
 
@@ -77,10 +122,24 @@ def _safe_get(d: dict[str, Any] | None, *keys: str) -> Any:
     return current
 
 
+def _garmin_call_with_retry(fn: Any, *args: Any, max_retries: int = 3) -> Any:
+    """Call a Garmin API function with exponential backoff on 429 rate-limit errors."""
+    for attempt in range(max_retries):
+        try:
+            return fn(*args)
+        except Exception as exc:
+            if "429" in str(exc) and attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1)  # 2s, then 4s
+                print(f"[GARMIN RATE LIMIT] 429 on attempt {attempt + 1}, retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
+
+
 def _collect_day(client: Garmin, date_str: str) -> dict[str, Any]:
-    stats = client.get_stats(date_str)
-    hrv_data = client.get_hrv_data(date_str)
-    sleep_data = client.get_sleep_data(date_str)
+    stats = _garmin_call_with_retry(client.get_stats, date_str)
+    hrv_data = _garmin_call_with_retry(client.get_hrv_data, date_str)
+    sleep_data = _garmin_call_with_retry(client.get_sleep_data, date_str)
 
     total_steps = _safe_get(stats, "totalSteps")
     resting_hr = _safe_get(stats, "restingHeartRate")
@@ -191,6 +250,8 @@ def run_sync() -> dict[str, Any]:
         except Exception as exc:
             skipped_days.append({"date": date_str, "reason": str(exc)})
 
+        # Brief pause between days to stay well within Garmin's rate limits
+        time.sleep(1)
         current += dt.timedelta(days=1)
 
     risk_latest = _request_json("GET", f"{api_base_url}/risk/latest", params={"user_id": user_id})
