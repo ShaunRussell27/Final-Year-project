@@ -118,6 +118,12 @@ function initBurnoutSection() {
     const manualMetricsSection = document.getElementById('manualMetrics');
     const restingHrInput = document.getElementById('resting_hr');
     const hrvAvgInput = document.getElementById('hrv_avg');
+    const manualAvgHrInput = document.getElementById('manual_avg_hr');
+    const manualStepsInput = document.getElementById('manual_steps');
+    const manualSleepHoursInput = document.getElementById('manual_sleep_hours');
+    const manualAvgStressInput = document.getElementById('manual_avg_stress');
+    const manualBodyBatteryInput = document.getElementById('manual_body_battery');
+    const manualSleepScoreInput = document.getElementById('manual_sleep_score');
 
     let syncStatusTimer = null;
     let lastResolvedWatchMetrics = {
@@ -127,6 +133,9 @@ function initBurnoutSection() {
         avgStress: null,
         bodyBatteryMax: null,
         sleepScore: null,
+        steps: null,
+        sleepMinutes: null,
+        avgHr: null,
     };
 
     function setStatus(text) {
@@ -219,6 +228,9 @@ function initBurnoutSection() {
         let avgStress = null;
         let bodyBatteryMax = null;
         let sleepScore = null;
+        let steps = null;
+        let sleepMinutes = null;
+        let avgHr = null;
 
         try {
             const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}`);
@@ -238,6 +250,15 @@ function initBurnoutSection() {
                 }
                 if (Number.isFinite(summary?.sleep_score)) {
                     sleepScore = Number(summary.sleep_score);
+                }
+                if (Number.isFinite(summary?.steps)) {
+                    steps = Number(summary.steps);
+                }
+                if (Number.isFinite(summary?.sleep_minutes)) {
+                    sleepMinutes = Number(summary.sleep_minutes);
+                }
+                if (Number.isFinite(summary?.avg_hr)) {
+                    avgHr = Number(summary.avg_hr);
                 }
             }
         } catch (error) {
@@ -290,6 +311,9 @@ function initBurnoutSection() {
             avgStress: Number.isFinite(avgStress) ? avgStress : null,
             bodyBatteryMax: Number.isFinite(bodyBatteryMax) ? bodyBatteryMax : null,
             sleepScore: Number.isFinite(sleepScore) ? sleepScore : null,
+            steps: Number.isFinite(steps) ? steps : null,
+            sleepMinutes: Number.isFinite(sleepMinutes) ? sleepMinutes : null,
+            avgHr: Number.isFinite(avgHr) ? avgHr : null,
         };
 
         lastResolvedWatchMetrics = resolved;
@@ -315,6 +339,25 @@ function initBurnoutSection() {
 
         if (hrvAvgInput && Number.isFinite(watchMetrics.hrvAvg)) {
             hrvAvgInput.value = String(watchMetrics.hrvAvg);
+        }
+
+        if (manualAvgHrInput && Number.isFinite(watchMetrics.avgHr)) {
+            manualAvgHrInput.value = String(watchMetrics.avgHr);
+        }
+        if (manualStepsInput && Number.isFinite(watchMetrics.steps)) {
+            manualStepsInput.value = String(watchMetrics.steps);
+        }
+        if (manualSleepHoursInput && Number.isFinite(watchMetrics.sleepMinutes)) {
+            manualSleepHoursInput.value = (watchMetrics.sleepMinutes / 60).toFixed(2);
+        }
+        if (manualAvgStressInput && Number.isFinite(watchMetrics.avgStress)) {
+            manualAvgStressInput.value = String(watchMetrics.avgStress);
+        }
+        if (manualBodyBatteryInput && Number.isFinite(watchMetrics.bodyBatteryMax)) {
+            manualBodyBatteryInput.value = String(watchMetrics.bodyBatteryMax);
+        }
+        if (manualSleepScoreInput && Number.isFinite(watchMetrics.sleepScore)) {
+            manualSleepScoreInput.value = String(watchMetrics.sleepScore);
         }
     }
 
@@ -415,9 +458,9 @@ function initBurnoutSection() {
             html += '<li>Body battery is low. Consider a longer sleep window and a shorter or easier training session.</li>';
         }
 
-        if (Number.isFinite(percStress) && percStress >= 8) {
+        if (Number.isFinite(percStress) && percStress >= 75) {
             html += '<li>Your stress level is very high. Try a 10-minute breathing or mindfulness exercise before your next task.</li>';
-        } else if (Number.isFinite(percStress) && percStress >= 6) {
+        } else if (Number.isFinite(percStress) && percStress >= 60) {
             html += '<li>Your stress is elevated. Take short breaks every 90 minutes and limit caffeine after 2 pm.</li>';
         }
 
@@ -520,6 +563,12 @@ function initBurnoutSection() {
 
         const manualRestingHr = parseFloat(document.getElementById('resting_hr')?.value);
         const manualHrvAvg = parseFloat(document.getElementById('hrv_avg')?.value);
+        const manualAvgHr = parseFloat(document.getElementById('manual_avg_hr')?.value);
+        const manualSteps = parseInt(document.getElementById('manual_steps')?.value, 10);
+        const manualSleepHours = parseFloat(document.getElementById('manual_sleep_hours')?.value);
+        const manualAvgStress = parseInt(document.getElementById('manual_avg_stress')?.value, 10);
+        const manualBodyBattery = parseInt(document.getElementById('manual_body_battery')?.value, 10);
+        const manualSleepScore = parseInt(document.getElementById('manual_sleep_score')?.value, 10);
         const perceivedStress = parseInt(document.getElementById('perceived_stress')?.value, 10);
         const workHours = parseFloat(document.getElementById('work_hours')?.value);
         const moodRadio = document.querySelector('input[name="mood_score"]:checked');
@@ -600,11 +649,14 @@ function initBurnoutSection() {
                 const ingestPayload = {
                     user_id: userId,
                     date: analysisDate,
-                    steps: null,
-                    sleep_minutes: null,
+                    steps: Number.isFinite(manualSteps) ? manualSteps : null,
+                    sleep_minutes: Number.isFinite(manualSleepHours) ? Math.round(manualSleepHours * 60) : null,
                     resting_hr: Number.isFinite(restingHr) ? restingHr : null,
-                    avg_hr: null,
+                    avg_hr: Number.isFinite(manualAvgHr) ? manualAvgHr : null,
                     hr_samples_count: null,
+                    avg_stress: Number.isFinite(manualAvgStress) ? manualAvgStress : null,
+                    body_battery_max: Number.isFinite(manualBodyBattery) ? manualBodyBattery : null,
+                    sleep_score: Number.isFinite(manualSleepScore) ? manualSleepScore : null,
                 };
 
                 const ingestResponse = await fetch(`${backendUrl}/ingest/healthkit`, {
@@ -620,15 +672,25 @@ function initBurnoutSection() {
             }
 
             setStatus('requesting notebook-model risk');
+            // In manual mode, manually-entered stress/battery take priority over watch values
+            const effectiveAvgStress = metricSource === 'manual' && Number.isFinite(manualAvgStress)
+                ? manualAvgStress
+                : (Number.isFinite(watchAvgStress) ? watchAvgStress : null);
+            const effectiveBodyBattery = metricSource === 'manual' && Number.isFinite(manualBodyBattery)
+                ? manualBodyBattery
+                : (Number.isFinite(watchBodyBattery) ? watchBodyBattery : null);
+            const effectiveSleepScore = metricSource === 'manual' && Number.isFinite(manualSleepScore)
+                ? manualSleepScore
+                : watchSleepScore;
             const notebookPayload = {
                 user_id: userId,
                 date: analysisDate,
                 resting_hr: Number.isFinite(restingHr) ? restingHr : null,
-                avg_hr: null,
+                avg_hr: metricSource === 'manual' && Number.isFinite(manualAvgHr) ? manualAvgHr : null,
                 hrv_avg: hrvAvg,
-                avg_stress: Number.isFinite(watchAvgStress) ? watchAvgStress : null,
-                body_battery_max: Number.isFinite(watchBodyBattery) ? watchBodyBattery : null,
-                perceived_stress: Number.isFinite(watchAvgStress) ? null : (Number.isFinite(perceivedStress) && perceivedStress >= 1 ? perceivedStress : null),
+                avg_stress: Number.isFinite(effectiveAvgStress) ? effectiveAvgStress : null,
+                body_battery_max: Number.isFinite(effectiveBodyBattery) ? effectiveBodyBattery : null,
+                perceived_stress: Number.isFinite(effectiveAvgStress) ? null : (Number.isFinite(perceivedStress) && perceivedStress >= 0 ? perceivedStress : null),
                 work_hours: Number.isFinite(workHours) && workHours >= 0 ? workHours : null,
                 mood_score: moodScore,
             };
@@ -662,7 +724,7 @@ function initBurnoutSection() {
                 summaryResult = await summaryResponse.json();
             }
 
-            displayResults(riskResult, summaryResult, { perceivedStress, workHours, moodScore, watchAvgStress, watchBodyBattery, watchSleepScore });
+            displayResults(riskResult, summaryResult, { perceivedStress, workHours, moodScore, watchAvgStress: effectiveAvgStress, watchBodyBattery: effectiveBodyBattery, watchSleepScore: effectiveSleepScore });
             setStatus('done');
             await refreshSyncStatus();
         } catch (error) {

@@ -194,7 +194,10 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
     factors: list[str] = []
 
     if latest.avg_stress is not None:
-        if latest.avg_stress >= 75:
+        if latest.avg_stress >= 90:
+            score += 35
+            factors.append(f"watch stress score is critically high ({latest.avg_stress}/100)")
+        elif latest.avg_stress >= 75:
             score += 25
             factors.append(f"watch stress score is high ({latest.avg_stress}/100)")
         elif latest.avg_stress >= 60:
@@ -205,7 +208,10 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
             factors.append(f"watch stress score is above normal ({latest.avg_stress}/100)")
 
     if latest.body_battery_max is not None:
-        if latest.body_battery_max <= 20:
+        if latest.body_battery_max <= 5:
+            score += 35
+            factors.append(f"body battery is empty ({latest.body_battery_max}/100)")
+        elif latest.body_battery_max <= 20:
             score += 20
             factors.append(f"body battery is critically low ({latest.body_battery_max}/100)")
         elif latest.body_battery_max <= 40:
@@ -480,34 +486,45 @@ def risk_notebook(payload: NotebookPredictIn):
 
     if payload.avg_stress is not None:
         # Objective Garmin stress score (0-100) — higher = more stressed
-        if payload.avg_stress >= 75:
-            adjustment += 15
+        # Extreme tier: at or near maximum stress overrides an otherwise-low model score
+        if payload.avg_stress >= 90:
+            adjustment += 35
+            extra_factors.append(f"watch stress score is critically high ({payload.avg_stress}/100)")
+        elif payload.avg_stress >= 75:
+            adjustment += 22
             extra_factors.append(f"watch stress score is high ({payload.avg_stress}/100)")
         elif payload.avg_stress >= 60:
-            adjustment += 8
+            adjustment += 12
             extra_factors.append(f"watch stress score is elevated ({payload.avg_stress}/100)")
         elif payload.avg_stress <= 25:
-            adjustment -= 8
+            adjustment -= 10
             extra_factors.append(f"watch stress score is low ({payload.avg_stress}/100)")
     elif payload.perceived_stress is not None:
         # Fall back to self-reported slider only when no watch stress data available
         # Uses same 0-100 scale as Garmin avg_stress, so same thresholds apply
-        if payload.perceived_stress >= 75:
-            adjustment += 15
+        if payload.perceived_stress >= 90:
+            adjustment += 35
+            extra_factors.append(f"self-reported stress is critically high ({payload.perceived_stress}/100)")
+        elif payload.perceived_stress >= 75:
+            adjustment += 22
             extra_factors.append(f"high self-reported stress ({payload.perceived_stress}/100)")
         elif payload.perceived_stress >= 60:
-            adjustment += 8
+            adjustment += 12
             extra_factors.append(f"elevated self-reported stress ({payload.perceived_stress}/100)")
         elif payload.perceived_stress <= 25:
-            adjustment -= 8
+            adjustment -= 10
             extra_factors.append(f"low self-reported stress ({payload.perceived_stress}/100)")
 
     if payload.body_battery_max is not None:
-        if payload.body_battery_max <= 20:
-            adjustment += 15
+        # Extreme tier: empty body battery overrides an otherwise-low model score
+        if payload.body_battery_max <= 5:
+            adjustment += 35
+            extra_factors.append(f"body battery is empty ({payload.body_battery_max}/100)")
+        elif payload.body_battery_max <= 20:
+            adjustment += 22
             extra_factors.append(f"body battery critically low ({payload.body_battery_max}/100)")
         elif payload.body_battery_max <= 40:
-            adjustment += 8
+            adjustment += 12
             extra_factors.append(f"body battery low ({payload.body_battery_max}/100)")
 
     if payload.work_hours is not None:
