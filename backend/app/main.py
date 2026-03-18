@@ -193,6 +193,25 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
     score = 20
     factors: list[str] = []
 
+    if latest.avg_stress is not None:
+        if latest.avg_stress >= 75:
+            score += 25
+            factors.append(f"watch stress score is high ({latest.avg_stress}/100)")
+        elif latest.avg_stress >= 60:
+            score += 15
+            factors.append(f"watch stress score is elevated ({latest.avg_stress}/100)")
+        elif latest.avg_stress >= 50:
+            score += 8
+            factors.append(f"watch stress score is above normal ({latest.avg_stress}/100)")
+
+    if latest.body_battery_max is not None:
+        if latest.body_battery_max <= 20:
+            score += 20
+            factors.append(f"body battery is critically low ({latest.body_battery_max}/100)")
+        elif latest.body_battery_max <= 40:
+            score += 10
+            factors.append(f"body battery is low ({latest.body_battery_max}/100)")
+
     if latest.sleep_minutes is not None and baseline_sleep is not None and baseline_sleep > 0:
         sleep_ratio = latest.sleep_minutes / baseline_sleep
         if sleep_ratio < 0.70:
@@ -337,6 +356,10 @@ def ingest_healthkit(payload: HealthKitIn, db: Session = Depends(get_db)):
         resting_hr=payload.resting_hr,
         avg_hr=payload.avg_hr,
         hr_samples_count=payload.hr_samples_count,
+        avg_stress=payload.avg_stress,
+        max_stress=payload.max_stress,
+        body_battery_max=payload.body_battery_max,
+        sleep_score=payload.sleep_score,
     )
     return DailySummaryOut.model_validate({
         "user_id": row.user_id,
@@ -348,6 +371,10 @@ def ingest_healthkit(payload: HealthKitIn, db: Session = Depends(get_db)):
         "resting_hr": row.resting_hr,
         "avg_hr": row.avg_hr,
         "hr_samples_count": row.hr_samples_count,
+        "avg_stress": row.avg_stress,
+        "max_stress": row.max_stress,
+        "body_battery_max": row.body_battery_max,
+        "sleep_score": row.sleep_score,
     })
 
 @app.post("/ingest/garmin-export")
@@ -391,6 +418,10 @@ def summary_latest(user_id: str, db: Session = Depends(get_db)):
         "resting_hr": row.resting_hr,
         "avg_hr": row.avg_hr,
         "hr_samples_count": row.hr_samples_count,
+        "avg_stress": row.avg_stress,
+        "max_stress": row.max_stress,
+        "body_battery_max": row.body_battery_max,
+        "sleep_score": row.sleep_score,
     })
 
 
@@ -443,12 +474,76 @@ def risk_notebook(payload: NotebookPredictIn):
     risk_date = payload.date or datetime.now(timezone.utc).date().isoformat()
     risk_user_id = payload.user_id or "demo-user"
 
+    # Apply adjustments: watch-measured stress takes priority over self-reported slider
+    adjustment = 0
+    extra_factors: list[str] = []
+
+    if payload.avg_stress is not None:
+        # Objective Garmin stress score (0-100) — higher = more stressed
+        if payload.avg_stress >= 75:
+            adjustment += 15
+            extra_factors.append(f"watch stress score is high ({payload.avg_stress}/100)")
+        elif payload.avg_stress >= 60:
+            adjustment += 8
+            extra_factors.append(f"watch stress score is elevated ({payload.avg_stress}/100)")
+        elif payload.avg_stress <= 25:
+            adjustment -= 8
+            extra_factors.append(f"watch stress score is low ({payload.avg_stress}/100)")
+    elif payload.perceived_stress is not None:
+        # Fall back to self-reported slider only when no watch stress data available
+        # Uses same 0-100 scale as Garmin avg_stress, so same thresholds apply
+        if payload.perceived_stress >= 75:
+            adjustment += 15
+            extra_factors.append(f"high self-reported stress ({payload.perceived_stress}/100)")
+        elif payload.perceived_stress >= 60:
+            adjustment += 8
+            extra_factors.append(f"elevated self-reported stress ({payload.perceived_stress}/100)")
+        elif payload.perceived_stress <= 25:
+            adjustment -= 8
+            extra_factors.append(f"low self-reported stress ({payload.perceived_stress}/100)")
+
+    if payload.body_battery_max is not None:
+        if payload.body_battery_max <= 20:
+            adjustment += 15
+            extra_factors.append(f"body battery critically low ({payload.body_battery_max}/100)")
+        elif payload.body_battery_max <= 40:
+            adjustment += 8
+            extra_factors.append(f"body battery low ({payload.body_battery_max}/100)")
+
+    if payload.work_hours is not None:
+        if payload.work_hours > 10:
+            adjustment += 12
+            extra_factors.append(f"long workday ({payload.work_hours:.0f} hrs)")
+        elif payload.work_hours > 8:
+            adjustment += 6
+            extra_factors.append(f"extended workday ({payload.work_hours:.0f} hrs)")
+
+    if payload.mood_score is not None:
+        if payload.mood_score <= 2:
+            adjustment += 10
+            extra_factors.append(f"poor self-reported mood ({payload.mood_score}/5)")
+        elif payload.mood_score == 3:
+            adjustment += 4
+        elif payload.mood_score >= 5:
+            adjustment -= 5
+            extra_factors.append("good self-reported mood")
+
+    adjusted_score = max(0, min(100, prediction.risk_score + adjustment))
+    combined_explanation = prediction.explanation + extra_factors
+
+    if adjusted_score >= 70:
+        adjusted_label = "High"
+    elif adjusted_score >= 40:
+        adjusted_label = "Medium"
+    else:
+        adjusted_label = "Low"
+
     return RiskOut(
         user_id=risk_user_id,
         date=risk_date,
-        risk_label=prediction.risk_label,
-        risk_score=prediction.risk_score,
-        explanation=prediction.explanation,
+        risk_label=adjusted_label,
+        risk_score=adjusted_score,
+        explanation=combined_explanation,
         confidence=prediction.confidence,
     )
 
@@ -472,6 +567,10 @@ def summaries(user_id: str, limit: int = 30, db: Session = Depends(get_db)):
             "resting_hr": r.resting_hr,
             "avg_hr": r.avg_hr,
             "hr_samples_count": r.hr_samples_count,
+            "avg_stress": r.avg_stress,
+            "max_stress": r.max_stress,
+            "body_battery_max": r.body_battery_max,
+            "sleep_score": r.sleep_score,
         })
         for r in rows
     ]

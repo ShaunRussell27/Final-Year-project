@@ -124,6 +124,9 @@ function initBurnoutSection() {
         restingHr: null,
         hrvAvg: null,
         dataDate: null,
+        avgStress: null,
+        bodyBatteryMax: null,
+        sleepScore: null,
     };
 
     function setStatus(text) {
@@ -213,6 +216,9 @@ function initBurnoutSection() {
         let hrvAvg = null;
         let dataDate = null;
         let summaryDate = null;
+        let avgStress = null;
+        let bodyBatteryMax = null;
+        let sleepScore = null;
 
         try {
             const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}`);
@@ -223,6 +229,15 @@ function initBurnoutSection() {
                 }
                 if (typeof summary?.date === 'string' && summary.date) {
                     summaryDate = summary.date;
+                }
+                if (Number.isFinite(summary?.avg_stress)) {
+                    avgStress = Number(summary.avg_stress);
+                }
+                if (Number.isFinite(summary?.body_battery_max)) {
+                    bodyBatteryMax = Number(summary.body_battery_max);
+                }
+                if (Number.isFinite(summary?.sleep_score)) {
+                    sleepScore = Number(summary.sleep_score);
                 }
             }
         } catch (error) {
@@ -272,6 +287,9 @@ function initBurnoutSection() {
             restingHr: Number.isFinite(restingHr) ? restingHr : null,
             hrvAvg: Number.isFinite(hrvAvg) ? hrvAvg : null,
             dataDate: dataDate || summaryDate || null,
+            avgStress: Number.isFinite(avgStress) ? avgStress : null,
+            bodyBatteryMax: Number.isFinite(bodyBatteryMax) ? bodyBatteryMax : null,
+            sleepScore: Number.isFinite(sleepScore) ? sleepScore : null,
         };
 
         lastResolvedWatchMetrics = resolved;
@@ -337,6 +355,16 @@ function initBurnoutSection() {
                 addDriver('sleep drop');
             } else if (text.includes('steps are far below')) {
                 addDriver('activity drop');
+            } else if (text.includes('watch stress score is high') || text.includes('watch stress score is elevated')) {
+                addDriver('high watch stress');
+            } else if (text.includes('body battery critically low') || text.includes('body battery is low')) {
+                addDriver('low body battery');
+            } else if (text.includes('high self-reported stress') || text.includes('elevated self-reported stress')) {
+                addDriver('high perceived stress');
+            } else if (text.includes('long workday') || text.includes('extended workday')) {
+                addDriver('long workday');
+            } else if (text.includes('poor self-reported mood')) {
+                addDriver('low mood');
             }
         });
 
@@ -353,12 +381,17 @@ function initBurnoutSection() {
         return drivers.slice(0, 3);
     }
 
-    function getRecommendations(riskResult, summaryResult, riskLevel) {
+    function getRecommendations(riskResult, summaryResult, riskLevel, selfReport) {
         let html = '<h3>Recommendations:</h3><ul>';
 
         const sleepMinutes = summaryResult?.sleep_minutes || 0;
         const steps = summaryResult?.steps || 0;
         const restingHr = summaryResult?.resting_hr || 0;
+        const percStress = selfReport?.perceivedStress;
+        const wkHrs = selfReport?.workHours;
+        const mScore = selfReport?.moodScore;
+        const wStress = selfReport?.watchAvgStress;
+        const wBattery = selfReport?.watchBodyBattery;
 
         if (sleepMinutes > 0 && sleepMinutes < 420) {
             html += '<li>Aim for 7-9 hours of quality sleep each night</li>';
@@ -370,6 +403,32 @@ function initBurnoutSection() {
 
         if (steps < 8000) {
             html += '<li>Increase daily activity to at least 8,000 steps</li>';
+        }
+
+        if (Number.isFinite(wStress) && wStress >= 75) {
+            html += '<li>Your Garmin stress score is very high. Schedule at least one 10-minute rest block today and avoid additional stressors.</li>';
+        } else if (Number.isFinite(wStress) && wStress >= 60) {
+            html += '<li>Your Garmin stress score is elevated. Short breathing exercises and a lighter afternoon schedule can help.</li>';
+        } else if (Number.isFinite(wBattery) && wBattery <= 20) {
+            html += '<li>Body battery is critically low — avoid intense workouts and prioritise sleep tonight.</li>';
+        } else if (Number.isFinite(wBattery) && wBattery <= 40) {
+            html += '<li>Body battery is low. Consider a longer sleep window and a shorter or easier training session.</li>';
+        }
+
+        if (Number.isFinite(percStress) && percStress >= 8) {
+            html += '<li>Your stress level is very high. Try a 10-minute breathing or mindfulness exercise before your next task.</li>';
+        } else if (Number.isFinite(percStress) && percStress >= 6) {
+            html += '<li>Your stress is elevated. Take short breaks every 90 minutes and limit caffeine after 2 pm.</li>';
+        }
+
+        if (Number.isFinite(wkHrs) && wkHrs > 10) {
+            html += '<li>You worked more than 10 hours today. Set a firm stopping time tomorrow to protect recovery.</li>';
+        } else if (Number.isFinite(wkHrs) && wkHrs > 8) {
+            html += '<li>Long workday detected. Try to end on time tomorrow and build in a wind-down routine.</li>';
+        }
+
+        if (Number.isFinite(mScore) && mScore <= 2) {
+            html += '<li>Your mood is low — a short walk, social connection, or enjoyable activity can help recharge.</li>';
         }
 
         if (Array.isArray(riskResult?.explanation) && riskResult.explanation.length) {
@@ -388,7 +447,7 @@ function initBurnoutSection() {
         return html;
     }
 
-    function displayResults(riskResult, summaryResult) {
+    function displayResults(riskResult, summaryResult, selfReport) {
         const resultSection = document.getElementById('resultSection');
         const resultBox = document.getElementById('resultBox');
         const recommendationsBox = document.getElementById('recommendations');
@@ -430,9 +489,21 @@ function initBurnoutSection() {
             ? `<br><small>Top drivers: ${topDrivers.join('; ')}</small>`
             : '';
 
+        // Watch biometrics line — shown when Garmin stress / body battery were available
+        const wStress = selfReport?.watchAvgStress;
+        const wBattery = selfReport?.watchBodyBattery;
+        const wSleep = selfReport?.watchSleepScore;
+        const watchBioItems = [];
+        if (Number.isFinite(wStress)) watchBioItems.push(`Stress&nbsp;${wStress}/100`);
+        if (Number.isFinite(wBattery)) watchBioItems.push(`Body&nbsp;Battery&nbsp;${wBattery}/100`);
+        if (Number.isFinite(wSleep)) watchBioItems.push(`Sleep&nbsp;Score&nbsp;${wSleep}`);
+        const watchBioSuffix = watchBioItems.length
+            ? `<br><small class="watch-bio-line">Watch: ${watchBioItems.join(' &middot; ')}</small>`
+            : '';
+
         resultBox.className = `result-box ${riskClass}`;
-        resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}${assessedDateSuffix}${topDriversSuffix}`;
-        recommendationsBox.innerHTML = getRecommendations(riskResult, summaryResult, riskLevel);
+        resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}${assessedDateSuffix}${watchBioSuffix}${topDriversSuffix}`;
+        recommendationsBox.innerHTML = getRecommendations(riskResult, summaryResult, riskLevel, selfReport);
     }
 
     async function runBurnoutAnalysis(event) {
@@ -449,6 +520,10 @@ function initBurnoutSection() {
 
         const manualRestingHr = parseFloat(document.getElementById('resting_hr')?.value);
         const manualHrvAvg = parseFloat(document.getElementById('hrv_avg')?.value);
+        const perceivedStress = parseInt(document.getElementById('perceived_stress')?.value, 10);
+        const workHours = parseFloat(document.getElementById('work_hours')?.value);
+        const moodRadio = document.querySelector('input[name="mood_score"]:checked');
+        const moodScore = moodRadio ? parseInt(moodRadio.value, 10) : null;
 
         if (!userId) {
             setStatus('missing user_id');
@@ -469,6 +544,9 @@ function initBurnoutSection() {
             ? manualHrvAvg
             : null;
         let watchDataDate = null;
+        let watchAvgStress = null;
+        let watchBodyBattery = null;
+        let watchSleepScore = null;
 
         if (metricSource === 'watch') {
             setStatus('reading watch metrics');
@@ -476,6 +554,19 @@ function initBurnoutSection() {
             restingHr = watchMetrics.restingHr ?? restingHr;
             hrvAvg = watchMetrics.hrvAvg ?? hrvAvg;
             watchDataDate = watchMetrics.dataDate || null;
+            watchAvgStress = watchMetrics.avgStress ?? null;
+            watchBodyBattery = watchMetrics.bodyBatteryMax ?? null;
+            watchSleepScore = watchMetrics.sleepScore ?? null;
+
+            // If watch provides stress, auto-hide the manual stress slider
+            const stressRow = document.getElementById('perceived_stress')?.closest('.form-group');
+            if (Number.isFinite(watchAvgStress)) {
+                if (stressRow) {
+                    stressRow.classList.add('watch-data-available');
+                    const note = stressRow.querySelector('.watch-override-note');
+                    if (note) note.style.display = 'block';
+                }
+            }
 
             if (restingHrInput && Number.isFinite(restingHr)) {
                 restingHrInput.value = String(restingHr);
@@ -535,6 +626,11 @@ function initBurnoutSection() {
                 resting_hr: Number.isFinite(restingHr) ? restingHr : null,
                 avg_hr: null,
                 hrv_avg: hrvAvg,
+                avg_stress: Number.isFinite(watchAvgStress) ? watchAvgStress : null,
+                body_battery_max: Number.isFinite(watchBodyBattery) ? watchBodyBattery : null,
+                perceived_stress: Number.isFinite(watchAvgStress) ? null : (Number.isFinite(perceivedStress) && perceivedStress >= 1 ? perceivedStress : null),
+                work_hours: Number.isFinite(workHours) && workHours >= 0 ? workHours : null,
+                mood_score: moodScore,
             };
 
             const riskResponse = await fetch(`${backendUrl}/risk/notebook`, {
@@ -566,7 +662,7 @@ function initBurnoutSection() {
                 summaryResult = await summaryResponse.json();
             }
 
-            displayResults(riskResult, summaryResult);
+            displayResults(riskResult, summaryResult, { perceivedStress, workHours, moodScore, watchAvgStress, watchBodyBattery, watchSleepScore });
             setStatus('done');
             await refreshSyncStatus();
         } catch (error) {
@@ -606,6 +702,24 @@ function initBurnoutSection() {
         backendUrlInput.addEventListener('change', refreshSyncStatus);
         backendUrlInput.addEventListener('blur', refreshSyncStatus);
     }
+
+    const stressSlider = document.getElementById('perceived_stress');
+    const stressValDisplay = document.getElementById('perceived_stress_val');
+    if (stressSlider && stressValDisplay) {
+        stressValDisplay.textContent = stressSlider.value; // set initial display
+        stressSlider.addEventListener('input', () => {
+            stressValDisplay.textContent = stressSlider.value;
+        });
+    }
+
+    document.querySelectorAll('input[name="mood_score"]').forEach((radio) => {
+        radio.addEventListener('change', () => {
+            document.querySelectorAll('.mood-option').forEach((opt) => opt.classList.remove('checked'));
+            if (radio.checked) {
+                radio.closest('.mood-option')?.classList.add('checked');
+            }
+        });
+    });
 
     setManualMetricsVisibility();
     refreshSyncStatus();

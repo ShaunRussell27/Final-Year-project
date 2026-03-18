@@ -12,6 +12,10 @@ class HealthKitIn(BaseModel):
     resting_hr: Optional[float] = None
     avg_hr: Optional[float] = None
     hr_samples_count: Optional[int] = None
+    avg_stress: Optional[int] = None
+    max_stress: Optional[int] = None
+    body_battery_max: Optional[int] = None
+    sleep_score: Optional[int] = None
 
 class DailySummaryOut(BaseModel):
     user_id: str
@@ -24,6 +28,10 @@ class DailySummaryOut(BaseModel):
     resting_hr: Optional[float] = None
     avg_hr: Optional[float] = None
     hr_samples_count: Optional[int] = None
+    avg_stress: Optional[int] = None
+    max_stress: Optional[int] = None
+    body_battery_max: Optional[int] = None
+    sleep_score: Optional[int] = None
 
 
 class RiskOut(BaseModel):
@@ -42,6 +50,15 @@ class NotebookPredictIn(BaseModel):
     resting_hr: Optional[float] = None
     avg_hr: Optional[float] = None
     hrv_avg: float = Field(..., examples=[53.0])
+
+    # Watch-measured stress (Garmin avg stress score 0-100); takes priority over perceived_stress when present
+    avg_stress: Optional[int] = Field(default=None, ge=0, le=100)
+    body_battery_max: Optional[int] = Field(default=None, ge=0, le=100)
+
+    # Self-report fallback — used only when watch stress data is absent
+    perceived_stress: Optional[int] = Field(default=None, ge=0, le=100)  # 0-100, same scale as Garmin avg_stress
+    work_hours: Optional[float] = Field(default=None, ge=0, le=24)       # hours worked/studied today
+    mood_score: Optional[int] = Field(default=None, ge=1, le=5)          # 1=very poor, 5=excellent
 
 
 class ChatRequestIn(BaseModel):

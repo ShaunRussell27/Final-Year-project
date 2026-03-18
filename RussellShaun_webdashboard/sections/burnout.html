@@ -42,6 +42,36 @@
             <p id="syncStatusText" class="help-text">Checking server sync status...</p>
         </div>
 
+        <div class="self-report-section">
+            <h3 class="self-report-title">Self-Report Check-In <span class="optional-badge">optional — improves accuracy</span></h3>
+            <p class="help-text">Your watch cannot measure these — adding them improves burnout prediction accuracy.</p>
+            <div class="burnout-grid">
+                <div class="form-group">
+                    <label for="perceived_stress">Stress Level Today: <strong id="perceived_stress_val">50</strong>/100</label>
+                    <input type="range" id="perceived_stress" min="0" max="100" step="1" value="50">
+                    <div class="range-labels"><span>0 — Very calm</span><span>100 — Overwhelmed</span></div>
+                    <span class="help-text watch-override-note" style="display:none;">&#x231B; Watch stress score detected — your Garmin data is being used instead of this slider.</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="work_hours">Hours Worked / Studied Today:</label>
+                    <input type="number" id="work_hours" min="0" max="24" step="0.5" value="8">
+                    <span class="help-text">Include all screen, desk, and study time</span>
+                </div>
+
+                <div class="form-group full-width">
+                    <label>Mood &amp; Energy Level:</label>
+                    <div class="mood-selector">
+                        <label class="mood-option"><input type="radio" name="mood_score" value="1"> 😞 Very Poor</label>
+                        <label class="mood-option"><input type="radio" name="mood_score" value="2"> 😕 Poor</label>
+                        <label class="mood-option"><input type="radio" name="mood_score" value="3" checked> 😐 Neutral</label>
+                        <label class="mood-option"><input type="radio" name="mood_score" value="4"> 🙂 Good</label>
+                        <label class="mood-option"><input type="radio" name="mood_score" value="5"> 😄 Excellent</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <button type="button" id="analyzeBtn" class="btn-analyze">Analyze Burnout Risk</button>
         <span id="debugStatus" class="help-text">Status: idle</span>
     </div>
