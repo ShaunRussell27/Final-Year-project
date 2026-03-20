@@ -6,6 +6,9 @@ __pycache__/
 # Environment variables
 .env
 
+# Garmin OAuth token export — contains sensitive credentials, never commit
+GARMIN_TOKEN_JSON.txt
+
 # Local backend runtime files
 backend/burnout.db
 backend/app/artifacts/*.joblib

@@ -272,7 +272,10 @@ def run_sync() -> dict[str, Any]:
         time.sleep(1)
         current += dt.timedelta(days=1)
 
-    risk_latest = _request_json("GET", f"{api_base_url}/risk/latest", params={"user_id": user_id})
+    try:
+        risk_latest = _request_json("GET", f"{api_base_url}/risk/latest", params={"user_id": user_id})
+    except Exception as exc:
+        risk_latest = {"error": str(exc)}
 
     notebook_risk: dict[str, Any] | None = None
     notebook_risk_error: str | None = None
