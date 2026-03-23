@@ -118,7 +118,7 @@ async def _shutdown_auto_sync() -> None:
         pass
     _garmin_sync_task = None
 
-SOURCE_PRIORITY = ["healthkit", "garmin_export"]  # prefer healthkit if both exist
+SOURCE_PRIORITY = ["garmin_export", "healthkit"]  # garmin watch sync takes priority over manual entries
 
 @app.get("/health")
 def health():
@@ -419,13 +419,14 @@ async def ingest_garmin_export(
     return {"ok": True, "saved": {"user_id": row.user_id, "date": row.date, "source": row.source}}
 
 @app.get("/summary/latest", response_model=DailySummaryOut)
-def summary_latest(user_id: str, db: Session = Depends(get_db)):
-    row = (
-        db.query(DailySummary)
-        .filter(DailySummary.user_id == user_id)
-        .order_by(DailySummary.date.desc())
-        .first()
-    )
+def summary_latest(user_id: str, preferred_source: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(DailySummary).filter(DailySummary.user_id == user_id)
+    if preferred_source:
+        row = query.filter(DailySummary.source == preferred_source).order_by(DailySummary.date.desc()).first()
+        if not row:
+            row = query.order_by(DailySummary.date.desc()).first()
+    else:
+        row = query.order_by(DailySummary.date.desc()).first()
     if not row:
         raise HTTPException(status_code=404, detail="No data for user_id")
     return DailySummaryOut.model_validate({

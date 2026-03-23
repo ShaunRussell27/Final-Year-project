@@ -233,7 +233,7 @@ function initBurnoutSection() {
         let avgHr = null;
 
         try {
-            const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}`);
+            const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}&preferred_source=garmin_export`);
             if (summaryResponse.ok) {
                 const summary = await summaryResponse.json();
                 if (Number.isFinite(summary?.resting_hr)) {
