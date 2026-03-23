@@ -12,6 +12,12 @@ from garminconnect import Garmin
 
 load_dotenv()
 
+# Cached Garmin client — reused across sync runs to avoid the OAuth token
+# exchange (oauth/exchange/user/2.0) being called every 3 hours, which
+# triggers Garmin's rate limiter (429).
+_garmin_client_cache: Garmin | None = None
+_garmin_client_cache_key: str = ""
+
 
 def _get_required_env(name: str) -> str:
     value = os.getenv(name)
@@ -233,6 +239,8 @@ def _request_notebook_risk_report(
 
 
 def run_sync() -> dict[str, Any]:
+    global _garmin_client_cache, _garmin_client_cache_key
+
     api_base_url = _get_api_base_url()
     user_id = os.getenv("BURNOUT_USER_ID")
 
@@ -245,7 +253,13 @@ def run_sync() -> dict[str, Any]:
 
     days_back = _get_int_env("GARMIN_DAYS_BACK", 7, minimum=1)
 
-    client = _get_client(garmin_email, garmin_password, token_store)
+    # Reuse the cached client if credentials haven't changed — avoids the OAuth
+    # token exchange on every periodic sync run (which causes 429 rate limits).
+    cache_key = f"{garmin_email}:{token_store}"
+    if _garmin_client_cache is None or _garmin_client_cache_key != cache_key:
+        _garmin_client_cache = _get_client(garmin_email, garmin_password, token_store)
+        _garmin_client_cache_key = cache_key
+    client = _garmin_client_cache
 
     end_date = dt.date.today()
     start_date = end_date - dt.timedelta(days=days_back - 1)
@@ -267,7 +281,13 @@ def run_sync() -> dict[str, Any]:
             latest_day_data = day_data
             day_snapshots.append(day_data)
         except Exception as exc:
-            skipped_days.append({"date": date_str, "reason": str(exc)})
+            reason = str(exc)
+            # If the session has expired (401) or auth was rejected, bust the client
+            # cache so the next sync run forces a fresh login.
+            if "401" in reason or "403" in reason or "Unauthorized" in reason:
+                _garmin_client_cache = None
+                _garmin_client_cache_key = ""
+            skipped_days.append({"date": date_str, "reason": reason})
 
         # Brief pause between days to stay well within Garmin's rate limits
         time.sleep(1)
