@@ -260,6 +260,9 @@ function initBurnoutSection() {
                 if (Number.isFinite(summary?.avg_hr)) {
                     avgHr = Number(summary.avg_hr);
                 }
+                if (Number.isFinite(summary?.hrv_avg) && summary.hrv_avg > 0) {
+                    hrvAvg = Number(summary.hrv_avg);
+                }
             }
         } catch (error) {
             console.warn('Could not load summary/latest for watch metrics', error);
@@ -398,7 +401,7 @@ function initBurnoutSection() {
                 addDriver('sleep drop');
             } else if (text.includes('steps are far below')) {
                 addDriver('activity drop');
-            } else if (text.includes('watch stress score is high') || text.includes('watch stress score is elevated')) {
+            } else if (text.includes('watch stress') || text.includes('blended stress') || text.includes('— high') || text.includes('— elevated')) {
                 addDriver('high watch stress');
             } else if (text.includes('body battery critically low') || text.includes('body battery is low')) {
                 addDriver('low body battery');
