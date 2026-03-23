@@ -535,36 +535,33 @@ def risk_notebook(payload: NotebookPredictIn):
     adjustment = 0
     extra_factors: list[str] = []
 
-    if payload.avg_stress is not None:
-        # Objective Garmin stress score (0-100) — higher = more stressed
-        # Extreme tier: at or near maximum stress overrides an otherwise-low model score
-        if payload.avg_stress >= 90:
-            adjustment += 35
-            extra_factors.append(f"watch stress score is critically high ({payload.avg_stress}/100)")
-        elif payload.avg_stress >= 75:
-            adjustment += 22
-            extra_factors.append(f"watch stress score is high ({payload.avg_stress}/100)")
-        elif payload.avg_stress >= 60:
-            adjustment += 12
-            extra_factors.append(f"watch stress score is elevated ({payload.avg_stress}/100)")
-        elif payload.avg_stress <= 25:
-            adjustment -= 10
-            extra_factors.append(f"watch stress score is low ({payload.avg_stress}/100)")
+    # Blend objective (Garmin) and self-reported stress when both are available (60/40 weighting)
+    if payload.avg_stress is not None and payload.perceived_stress is not None:
+        effective_stress = round(payload.avg_stress * 0.6 + payload.perceived_stress * 0.4)
+        stress_source = f"blended stress (watch {payload.avg_stress}/100, self-reported {payload.perceived_stress}/100)"
+    elif payload.avg_stress is not None:
+        effective_stress = payload.avg_stress
+        stress_source = f"watch stress score ({payload.avg_stress}/100)"
     elif payload.perceived_stress is not None:
-        # Fall back to self-reported slider only when no watch stress data available
-        # Uses same 0-100 scale as Garmin avg_stress, so same thresholds apply
-        if payload.perceived_stress >= 90:
+        effective_stress = payload.perceived_stress
+        stress_source = f"self-reported stress ({payload.perceived_stress}/100)"
+    else:
+        effective_stress = None
+        stress_source = ""
+
+    if effective_stress is not None:
+        if effective_stress >= 90:
             adjustment += 35
-            extra_factors.append(f"self-reported stress is critically high ({payload.perceived_stress}/100)")
-        elif payload.perceived_stress >= 75:
+            extra_factors.append(f"{stress_source} — critically high")
+        elif effective_stress >= 75:
             adjustment += 22
-            extra_factors.append(f"high self-reported stress ({payload.perceived_stress}/100)")
-        elif payload.perceived_stress >= 60:
+            extra_factors.append(f"{stress_source} — high")
+        elif effective_stress >= 60:
             adjustment += 12
-            extra_factors.append(f"elevated self-reported stress ({payload.perceived_stress}/100)")
-        elif payload.perceived_stress <= 25:
+            extra_factors.append(f"{stress_source} — elevated")
+        elif effective_stress <= 25:
             adjustment -= 10
-            extra_factors.append(f"low self-reported stress ({payload.perceived_stress}/100)")
+            extra_factors.append(f"{stress_source} — low")
 
     if payload.body_battery_max is not None:
         # Extreme tier: empty body battery overrides an otherwise-low model score

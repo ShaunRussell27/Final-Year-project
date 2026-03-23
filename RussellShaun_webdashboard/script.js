@@ -702,7 +702,7 @@ function initBurnoutSection() {
                     hrv_avg: hrvAvg,
                     avg_stress: Number.isFinite(effectiveAvgStress) ? effectiveAvgStress : null,
                     body_battery_max: Number.isFinite(effectiveBodyBattery) ? effectiveBodyBattery : null,
-                    perceived_stress: Number.isFinite(effectiveAvgStress) ? null : (Number.isFinite(perceivedStress) && perceivedStress >= 0 ? perceivedStress : null),
+                    perceived_stress: Number.isFinite(perceivedStress) && perceivedStress >= 0 ? perceivedStress : null,
                     work_hours: Number.isFinite(workHours) && workHours >= 0 ? workHours : null,
                     mood_score: moodScore,
                 };
