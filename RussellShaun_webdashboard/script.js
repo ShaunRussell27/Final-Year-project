@@ -191,6 +191,24 @@ function initBurnoutSection() {
             }
 
             if (success === true) {
+                const lastResult = sync.last_result || {};
+                const ingestedDays = lastResult.ingested_days ?? 0;
+                const skippedDays = Array.isArray(lastResult.skipped_days) ? lastResult.skipped_days : [];
+                const rateLimited = skippedDays.some(d => d?.reason?.includes('429') || d?.reason?.toLowerCase().includes('rate limit'));
+
+                if (ingestedDays === 0 && rateLimited) {
+                    syncStatusPanel.classList.add('warn');
+                    syncStatusText.textContent = `Auto-sync is ON but Garmin is rate limiting requests (429). No data ingested yet. Last attempt: ${finishedAt}.${running ? ' Retrying...' : ' Will retry at next interval.'}`;
+                    return;
+                }
+
+                if (ingestedDays === 0 && skippedDays.length > 0) {
+                    syncStatusPanel.classList.add('warn');
+                    const reason = skippedDays[0]?.reason || 'unknown error';
+                    syncStatusText.textContent = `Auto-sync is ON but last run ingested 0 days. Reason: ${reason}. Last attempt: ${finishedAt}.`;
+                    return;
+                }
+
                 syncStatusPanel.classList.add('ok');
                 syncStatusText.textContent = `Auto-sync is ON (${sync.interval_minutes} min). Last success: ${finishedAt}.${running ? ' Sync currently running.' : ''}`;
                 return;
