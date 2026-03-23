@@ -260,9 +260,9 @@ function initBurnoutSection() {
                 if (Number.isFinite(summary?.avg_hr)) {
                     avgHr = Number(summary.avg_hr);
                 }
-                if (Number.isFinite(summary?.hrv_avg) && summary.hrv_avg > 0) {
-                    hrvAvg = Number(summary.hrv_avg);
-                }
+                // Note: hrv_avg is intentionally NOT read from summary/latest in watch mode.
+                // HRV must come from the Garmin sync snapshots below so manual entries never
+                // contaminate the watch-mode result.
             }
         } catch (error) {
             console.warn('Could not load summary/latest for watch metrics', error);
@@ -690,6 +690,9 @@ function initBurnoutSection() {
                 setStatus('no HRV — using watch baseline risk');
                 const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(userId)}`);
                 if (!fallbackResponse.ok) {
+                    if (fallbackResponse.status === 404) {
+                        throw new Error('No Garmin data synced yet. Wear your watch overnight to enable watch mode, or use Manual mode instead.');
+                    }
                     throw new Error(`Risk request failed (${fallbackResponse.status})`);
                 }
                 riskResult = await fallbackResponse.json();
