@@ -231,47 +231,17 @@ function initBurnoutSection() {
         let steps = null;
         let sleepMinutes = null;
         let avgHr = null;
+        // user_id actually used by the last sync run — may differ from the form input
+        // (BURNOUT_USER_ID env var or Garmin email prefix)
+        let syncUserId = null;
 
-        try {
-            const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}&preferred_source=garmin_export`);
-            if (summaryResponse.ok) {
-                const summary = await summaryResponse.json();
-                if (Number.isFinite(summary?.resting_hr)) {
-                    restingHr = Number(summary.resting_hr);
-                }
-                if (typeof summary?.date === 'string' && summary.date) {
-                    summaryDate = summary.date;
-                }
-                if (Number.isFinite(summary?.avg_stress)) {
-                    avgStress = Number(summary.avg_stress);
-                }
-                if (Number.isFinite(summary?.body_battery_max)) {
-                    bodyBatteryMax = Number(summary.body_battery_max);
-                }
-                if (Number.isFinite(summary?.sleep_score)) {
-                    sleepScore = Number(summary.sleep_score);
-                }
-                if (Number.isFinite(summary?.steps)) {
-                    steps = Number(summary.steps);
-                }
-                if (Number.isFinite(summary?.sleep_minutes)) {
-                    sleepMinutes = Number(summary.sleep_minutes);
-                }
-                if (Number.isFinite(summary?.avg_hr)) {
-                    avgHr = Number(summary.avg_hr);
-                }
-                // Note: hrv_avg is intentionally NOT read from summary/latest in watch mode.
-                // HRV must come from the Garmin sync snapshots below so manual entries never
-                // contaminate the watch-mode result.
-            }
-        } catch (error) {
-            console.warn('Could not load summary/latest for watch metrics', error);
-        }
-
+        // Fetch /sync/status FIRST so we know the user_id data was stored under.
+        // Without this, /summary/latest and /risk/latest would query the wrong user.
         try {
             const syncResponse = await fetch(`${backendUrl}/sync/status`);
             if (syncResponse.ok) {
                 const syncData = await syncResponse.json();
+                syncUserId = syncData?.sync?.last_result?.user_id || null;
                 const latestDayData = syncData?.sync?.last_result?.latest_day_data || {};
                 const daySnapshots = Array.isArray(syncData?.sync?.last_result?.garmin_day_snapshots)
                     ? syncData.sync.last_result.garmin_day_snapshots
@@ -307,7 +277,47 @@ function initBurnoutSection() {
             console.warn('Could not load sync/status for watch metrics', error);
         }
 
+        // Prefer the user_id from the sync run; fall back to the form input
+        const effectiveUserId = syncUserId || userId;
+
+        try {
+            const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(effectiveUserId)}&preferred_source=garmin_export`);
+            if (summaryResponse.ok) {
+                const summary = await summaryResponse.json();
+                if (Number.isFinite(summary?.resting_hr)) {
+                    restingHr = Number(summary.resting_hr);
+                }
+                if (typeof summary?.date === 'string' && summary.date) {
+                    summaryDate = summary.date;
+                }
+                if (Number.isFinite(summary?.avg_stress)) {
+                    avgStress = Number(summary.avg_stress);
+                }
+                if (Number.isFinite(summary?.body_battery_max)) {
+                    bodyBatteryMax = Number(summary.body_battery_max);
+                }
+                if (Number.isFinite(summary?.sleep_score)) {
+                    sleepScore = Number(summary.sleep_score);
+                }
+                if (Number.isFinite(summary?.steps)) {
+                    steps = Number(summary.steps);
+                }
+                if (Number.isFinite(summary?.sleep_minutes)) {
+                    sleepMinutes = Number(summary.sleep_minutes);
+                }
+                if (Number.isFinite(summary?.avg_hr)) {
+                    avgHr = Number(summary.avg_hr);
+                }
+                // Note: hrv_avg is intentionally NOT read from summary/latest in watch mode.
+                // HRV must come from the Garmin sync snapshots above so manual entries never
+                // contaminate the watch-mode result.
+            }
+        } catch (error) {
+            console.warn('Could not load summary/latest for watch metrics', error);
+        }
+
         const resolved = {
+            syncUserId,
             restingHr: Number.isFinite(restingHr) ? restingHr : null,
             hrvAvg: Number.isFinite(hrvAvg) ? hrvAvg : null,
             dataDate: dataDate || summaryDate || null,
@@ -599,10 +609,14 @@ function initBurnoutSection() {
         let watchAvgStress = null;
         let watchBodyBattery = null;
         let watchSleepScore = null;
+        // In watch mode this is overridden with the user_id the sync actually stored data under
+        let watchUserId = userId;
 
         if (metricSource === 'watch') {
             setStatus('reading watch metrics');
             const watchMetrics = await resolveWatchMetrics(backendUrl, userId);
+            // Use the user_id the sync actually stored data under (may differ from form input)
+            watchUserId = watchMetrics.syncUserId || userId;
             restingHr = watchMetrics.restingHr ?? restingHr;
             hrvAvg = watchMetrics.hrvAvg ?? hrvAvg;
             watchDataDate = watchMetrics.dataDate || null;
@@ -688,7 +702,7 @@ function initBurnoutSection() {
             // Watch mode without HRV: /risk/latest already blends notebook model when HRV is in DB
             if (metricSource === 'watch' && (!Number.isFinite(hrvAvg) || hrvAvg <= 0)) {
                 setStatus('no HRV — using watch baseline risk');
-                const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(userId)}`);
+                const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(watchUserId)}`);
                 if (!fallbackResponse.ok) {
                     if (fallbackResponse.status === 404) {
                         throw new Error('No Garmin data synced yet. Wear your watch overnight to enable watch mode, or use Manual mode instead.');
@@ -701,7 +715,7 @@ function initBurnoutSection() {
                 }
             } else {
                 const notebookPayload = {
-                    user_id: userId,
+                    user_id: watchUserId,
                     date: analysisDate,
                     resting_hr: Number.isFinite(restingHr) ? restingHr : null,
                     avg_hr: metricSource === 'manual' && Number.isFinite(manualAvgHr) ? manualAvgHr : null,
@@ -722,7 +736,7 @@ function initBurnoutSection() {
                 if (riskResponse.ok) {
                     riskResult = await riskResponse.json();
                 } else {
-                    const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(userId)}`);
+                    const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(watchUserId)}`);
                     if (!fallbackResponse.ok) {
                         const body = await riskResponse.text();
                         throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
@@ -736,7 +750,7 @@ function initBurnoutSection() {
             }
 
             setStatus('requesting summary');
-            const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(userId)}`);
+            const summaryResponse = await fetch(`${backendUrl}/summary/latest?user_id=${encodeURIComponent(watchUserId)}`);
             let summaryResult = null;
             if (summaryResponse.ok) {
                 summaryResult = await summaryResponse.json();
