@@ -378,6 +378,7 @@ def ingest_healthkit(payload: HealthKitIn, db: Session = Depends(get_db)):
         max_stress=payload.max_stress,
         body_battery_max=payload.body_battery_max,
         sleep_score=payload.sleep_score,
+        hrv_avg=payload.hrv_avg,
     )
     return DailySummaryOut.model_validate({
         "user_id": row.user_id,
@@ -393,6 +394,7 @@ def ingest_healthkit(payload: HealthKitIn, db: Session = Depends(get_db)):
         "max_stress": row.max_stress,
         "body_battery_max": row.body_battery_max,
         "sleep_score": row.sleep_score,
+        "hrv_avg": row.hrv_avg,
     })
 
 @app.post("/ingest/garmin-export")
@@ -440,6 +442,7 @@ def summary_latest(user_id: str, db: Session = Depends(get_db)):
         "max_stress": row.max_stress,
         "body_battery_max": row.body_battery_max,
         "sleep_score": row.sleep_score,
+        "hrv_avg": row.hrv_avg,
     })
 
 
@@ -461,13 +464,49 @@ def risk_latest(user_id: str, db: Session = Depends(get_db)):
         baseline_rows = [latest]
 
     model_prediction = model_service.predict(latest, baseline_rows)
-    if model_prediction is not None:
+
+    # If the record has HRV, also run the SWELL/WESAD notebook model and blend the scores
+    notebook_prediction = None
+    if latest.hrv_avg and latest.hrv_avg > 0:
+        notebook_prediction = notebook_model_service.predict(
+            resting_hr=latest.resting_hr,
+            avg_hr=latest.avg_hr,
+            hrv_avg=latest.hrv_avg,
+        )
+
+    if model_prediction is not None or notebook_prediction is not None:
+        iso_score = model_prediction.risk_score if model_prediction else None
+        nb_score = notebook_prediction.risk_score if notebook_prediction else None
+
+        if iso_score is not None and nb_score is not None:
+            blended_score = int(round(iso_score * 0.5 + nb_score * 0.5))
+        else:
+            blended_score = iso_score if iso_score is not None else nb_score
+
+        blended_score = max(0, min(100, blended_score))
+        if blended_score >= 70:
+            blended_label = "High"
+        elif blended_score >= 40:
+            blended_label = "Medium"
+        else:
+            blended_label = "Low"
+
+        explanation = []
+        if model_prediction:
+            explanation.extend(model_prediction.explanation)
+        if notebook_prediction:
+            explanation.extend(notebook_prediction.explanation)
+        if not explanation:
+            explanation = ["no major negative deviation versus baseline detected"]
+
+        confidence = notebook_prediction.confidence if notebook_prediction else None
         return RiskOut(
             user_id=latest.user_id,
             date=latest.date,
-            risk_label=model_prediction.risk_label,
-            risk_score=model_prediction.risk_score,
-            explanation=model_prediction.explanation,
+            risk_label=blended_label,
+            risk_score=blended_score,
+            explanation=explanation,
+            confidence=confidence,
         )
 
     return _compute_risk(latest, baseline_rows)

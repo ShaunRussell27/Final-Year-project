@@ -197,6 +197,7 @@ def _to_ingest_payload(user_id: str, day_data: dict[str, Any]) -> dict[str, Any]
         "max_stress": day_data.get("max_stress"),
         "body_battery_max": day_data.get("body_battery_max"),
         "sleep_score": day_data.get("sleep_score"),
+        "hrv_avg": day_data.get("hrv_avg"),
     }
 
 

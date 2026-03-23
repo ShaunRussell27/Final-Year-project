@@ -16,6 +16,7 @@ class HealthKitIn(BaseModel):
     max_stress: Optional[int] = None
     body_battery_max: Optional[int] = None
     sleep_score: Optional[int] = None
+    hrv_avg: Optional[float] = None
 
 class DailySummaryOut(BaseModel):
     user_id: str
@@ -32,6 +33,7 @@ class DailySummaryOut(BaseModel):
     max_stress: Optional[int] = None
     body_battery_max: Optional[int] = None
     sleep_score: Optional[int] = None
+    hrv_avg: Optional[float] = None
 
 
 class RiskOut(BaseModel):

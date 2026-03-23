@@ -626,13 +626,10 @@ function initBurnoutSection() {
             }
         }
 
-        if (!Number.isFinite(hrvAvg) || hrvAvg <= 0) {
+        // In manual mode, HRV is required for the notebook model
+        if (metricSource === 'manual' && (!Number.isFinite(hrvAvg) || hrvAvg <= 0)) {
             setStatus('missing hrv_avg');
-            showError(
-                metricSource === 'watch'
-                    ? 'No watch HRV found. Switch Metrics Source to "Enter metrics manually" and provide HRV Average.'
-                    : 'Please enter a valid HRV Average (RMSSD).'
-            );
+            showError('Please enter a valid HRV Average (RMSSD).');
             return;
         }
 
@@ -671,7 +668,7 @@ function initBurnoutSection() {
                 }
             }
 
-            setStatus('requesting notebook-model risk');
+            setStatus('requesting risk score');
             // In manual mode, manually-entered stress/battery take priority over watch values
             const effectiveAvgStress = metricSource === 'manual' && Number.isFinite(manualAvgStress)
                 ? manualAvgStress
@@ -682,39 +679,54 @@ function initBurnoutSection() {
             const effectiveSleepScore = metricSource === 'manual' && Number.isFinite(manualSleepScore)
                 ? manualSleepScore
                 : watchSleepScore;
-            const notebookPayload = {
-                user_id: userId,
-                date: analysisDate,
-                resting_hr: Number.isFinite(restingHr) ? restingHr : null,
-                avg_hr: metricSource === 'manual' && Number.isFinite(manualAvgHr) ? manualAvgHr : null,
-                hrv_avg: hrvAvg,
-                avg_stress: Number.isFinite(effectiveAvgStress) ? effectiveAvgStress : null,
-                body_battery_max: Number.isFinite(effectiveBodyBattery) ? effectiveBodyBattery : null,
-                perceived_stress: Number.isFinite(effectiveAvgStress) ? null : (Number.isFinite(perceivedStress) && perceivedStress >= 0 ? perceivedStress : null),
-                work_hours: Number.isFinite(workHours) && workHours >= 0 ? workHours : null,
-                mood_score: moodScore,
-            };
-
-            const riskResponse = await fetch(`${backendUrl}/risk/notebook`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(notebookPayload),
-            });
 
             let riskResult;
-            if (riskResponse.ok) {
-                riskResult = await riskResponse.json();
-            } else {
+
+            // Watch mode without HRV: /risk/latest already blends notebook model when HRV is in DB
+            if (metricSource === 'watch' && (!Number.isFinite(hrvAvg) || hrvAvg <= 0)) {
+                setStatus('no HRV — using watch baseline risk');
                 const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(userId)}`);
                 if (!fallbackResponse.ok) {
-                    const body = await riskResponse.text();
-                    throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
+                    throw new Error(`Risk request failed (${fallbackResponse.status})`);
                 }
                 riskResult = await fallbackResponse.json();
                 if (!Array.isArray(riskResult.explanation)) {
                     riskResult.explanation = [];
                 }
-                riskResult.explanation.unshift('notebook model unavailable, showing latest baseline risk');
+            } else {
+                const notebookPayload = {
+                    user_id: userId,
+                    date: analysisDate,
+                    resting_hr: Number.isFinite(restingHr) ? restingHr : null,
+                    avg_hr: metricSource === 'manual' && Number.isFinite(manualAvgHr) ? manualAvgHr : null,
+                    hrv_avg: hrvAvg,
+                    avg_stress: Number.isFinite(effectiveAvgStress) ? effectiveAvgStress : null,
+                    body_battery_max: Number.isFinite(effectiveBodyBattery) ? effectiveBodyBattery : null,
+                    perceived_stress: Number.isFinite(effectiveAvgStress) ? null : (Number.isFinite(perceivedStress) && perceivedStress >= 0 ? perceivedStress : null),
+                    work_hours: Number.isFinite(workHours) && workHours >= 0 ? workHours : null,
+                    mood_score: moodScore,
+                };
+
+                const riskResponse = await fetch(`${backendUrl}/risk/notebook`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(notebookPayload),
+                });
+
+                if (riskResponse.ok) {
+                    riskResult = await riskResponse.json();
+                } else {
+                    const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(userId)}`);
+                    if (!fallbackResponse.ok) {
+                        const body = await riskResponse.text();
+                        throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
+                    }
+                    riskResult = await fallbackResponse.json();
+                    if (!Array.isArray(riskResult.explanation)) {
+                        riskResult.explanation = [];
+                    }
+                    riskResult.explanation.unshift('notebook model unavailable, showing latest baseline risk');
+                }
             }
 
             setStatus('requesting summary');

@@ -25,3 +25,4 @@ class DailySummary(Base):
     max_stress: Mapped[int | None] = mapped_column(Integer, nullable=True)
     body_battery_max: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0-100 energy reserve
     sleep_score: Mapped[int | None] = mapped_column(Integer, nullable=True)       # Garmin sleep score
+    hrv_avg: Mapped[float | None] = mapped_column(Float, nullable=True)           # HRV RMSSD nightly average (ms)
