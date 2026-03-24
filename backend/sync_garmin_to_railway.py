@@ -133,6 +133,17 @@ def _get_client(email: str, password: str, token_store: str) -> Garmin:
                 "environment variable in your Railway service settings:\n"
                 f"{token_json}\n"
             )
+    else:
+        # When loading from saved tokens, garminconnect never sets display_name
+        # (it's only populated during login()). Without it every API call goes to
+        # /usersummary/daily/None which returns 403.  Fetch the social profile to
+        # populate it now.
+        try:
+            profile = client.connectapi("/userprofile-service/socialProfile")
+            if isinstance(profile, dict):
+                client.display_name = profile.get("displayName") or profile.get("userName")
+        except Exception:
+            pass
 
     return client
 
