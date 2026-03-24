@@ -306,6 +306,29 @@ def run_sync() -> dict[str, Any]:
         except Exception as exc:
             notebook_risk_error = str(exc)
 
+    # After a successful sync, persist the fresh garth token back to disk.
+    # garth updates the in-memory token during exchange but doesn't auto-save it,
+    # so we dump it here and print it for the user to update GARMIN_TOKEN_JSON on
+    # Railway — keeping it fresh across container restarts and avoiding future 429s.
+    if ingested > 0:
+        try:
+            token_path_expanded = str(Path(token_store).expanduser())
+            dump_fn = getattr(client.garth, "dump", None)
+            if dump_fn:
+                dump_fn(token_path_expanded)
+                fresh_token_json = _read_token_to_json(token_path_expanded)
+                if fresh_token_json:
+                    print(
+                        "\n[GARMIN TOKEN — ACTION REQUIRED] "
+                        "Garmin data was synced successfully. "
+                        "Copy the value below and save it as the GARMIN_TOKEN_JSON "
+                        "environment variable in Railway to prevent 429 rate-limit "
+                        "errors on future container restarts:\n"
+                        f"{fresh_token_json}\n"
+                    )
+        except Exception:
+            pass
+
     result = {
         "user_id": user_id,
         "api_base_url": api_base_url,
