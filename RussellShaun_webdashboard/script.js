@@ -646,6 +646,7 @@ function initBurnoutSection() {
         let watchAvgStress = null;
         let watchBodyBattery = null;
         let watchSleepScore = null;
+        let syncRisk = null;
         // In watch mode this is overridden with the user_id the sync actually stored data under
         let watchUserId = userId;
 
@@ -654,6 +655,7 @@ function initBurnoutSection() {
             const watchMetrics = await resolveWatchMetrics(backendUrl, userId);
             // Use the user_id the sync actually stored data under (may differ from form input)
             watchUserId = watchMetrics.syncUserId || userId;
+            syncRisk = watchMetrics.syncRisk || null;
             restingHr = watchMetrics.restingHr ?? restingHr;
             hrvAvg = watchMetrics.hrvAvg ?? hrvAvg;
             watchDataDate = watchMetrics.dataDate || null;
@@ -741,9 +743,9 @@ function initBurnoutSection() {
                 setStatus('no HRV — using watch baseline risk');
                 const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(watchUserId)}`);
                 if (!fallbackResponse.ok) {
-                    if (fallbackResponse.status === 404 && watchMetrics.syncRisk) {
+                    if (fallbackResponse.status === 404 && syncRisk) {
                         // DB is empty (ephemeral SQLite on Railway) — use risk cached in sync status
-                        riskResult = { ...watchMetrics.syncRisk };
+                        riskResult = { ...syncRisk };
                         riskResult.explanation = [...(riskResult.explanation || []), 'risk sourced from latest Garmin sync'];
                     } else if (fallbackResponse.status === 404) {
                         throw new Error('No Garmin data synced yet. Wear your watch overnight to enable watch mode, or use Manual mode instead.');
@@ -781,8 +783,8 @@ function initBurnoutSection() {
                 } else {
                     const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(watchUserId)}`);
                     if (!fallbackResponse.ok) {
-                        if (fallbackResponse.status === 404 && watchMetrics.syncRisk) {
-                            riskResult = { ...watchMetrics.syncRisk };
+                        if (fallbackResponse.status === 404 && syncRisk) {
+                            riskResult = { ...syncRisk };
                             riskResult.explanation = ['notebook model unavailable, showing latest Garmin sync risk', ...(riskResult.explanation || [])];
                         } else {
                             const body = await riskResponse.text();
