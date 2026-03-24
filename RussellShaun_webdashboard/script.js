@@ -252,6 +252,7 @@ function initBurnoutSection() {
         // user_id actually used by the last sync run — may differ from the form input
         // (BURNOUT_USER_ID env var or Garmin email prefix)
         let syncUserId = null;
+        let syncRisk = null;
 
         // Fetch /sync/status FIRST so we know the user_id data was stored under.
         // Without this, /summary/latest and /risk/latest would query the wrong user.
@@ -289,6 +290,23 @@ function initBurnoutSection() {
                 }
                 if (!dataDate && typeof latestDayData?.date === 'string' && latestDayData.date) {
                     dataDate = latestDayData.date;
+                }
+                // Read remaining metrics from sync status (used when /summary/latest is unavailable)
+                if (Number.isFinite(latestDayData?.avg_stress)) { avgStress = latestDayData.avg_stress; }
+                if (Number.isFinite(latestDayData?.body_battery_max)) { bodyBatteryMax = latestDayData.body_battery_max; }
+                if (Number.isFinite(latestDayData?.sleep_score)) { sleepScore = latestDayData.sleep_score; }
+                if (Number.isFinite(latestDayData?.steps)) { steps = latestDayData.steps; }
+                if (Number.isFinite(latestDayData?.sleep_minutes)) { sleepMinutes = latestDayData.sleep_minutes; }
+                if (Number.isFinite(latestDayData?.avg_hr)) { avgHr = latestDayData.avg_hr; }
+                // Cache the risk result from the last sync run — used as fallback when DB is empty
+                const rawSyncRisk = syncData?.sync?.last_result?.latest_risk;
+                if (rawSyncRisk && Number.isFinite(rawSyncRisk.risk_score)) {
+                    syncRisk = {
+                        ...rawSyncRisk,
+                        explanation: Array.isArray(rawSyncRisk.explanation)
+                            ? rawSyncRisk.explanation
+                            : (rawSyncRisk.explanation ? [rawSyncRisk.explanation] : []),
+                    };
                 }
             }
         } catch (error) {
@@ -336,6 +354,7 @@ function initBurnoutSection() {
 
         const resolved = {
             syncUserId,
+            syncRisk,
             restingHr: Number.isFinite(restingHr) ? restingHr : null,
             hrvAvg: Number.isFinite(hrvAvg) ? hrvAvg : null,
             dataDate: dataDate || summaryDate || null,
@@ -722,14 +741,20 @@ function initBurnoutSection() {
                 setStatus('no HRV — using watch baseline risk');
                 const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(watchUserId)}`);
                 if (!fallbackResponse.ok) {
-                    if (fallbackResponse.status === 404) {
+                    if (fallbackResponse.status === 404 && watchMetrics.syncRisk) {
+                        // DB is empty (ephemeral SQLite on Railway) — use risk cached in sync status
+                        riskResult = { ...watchMetrics.syncRisk };
+                        riskResult.explanation = [...(riskResult.explanation || []), 'risk sourced from latest Garmin sync'];
+                    } else if (fallbackResponse.status === 404) {
                         throw new Error('No Garmin data synced yet. Wear your watch overnight to enable watch mode, or use Manual mode instead.');
+                    } else {
+                        throw new Error(`Risk request failed (${fallbackResponse.status})`);
                     }
-                    throw new Error(`Risk request failed (${fallbackResponse.status})`);
-                }
-                riskResult = await fallbackResponse.json();
-                if (!Array.isArray(riskResult.explanation)) {
-                    riskResult.explanation = [];
+                } else {
+                    riskResult = await fallbackResponse.json();
+                    if (!Array.isArray(riskResult.explanation)) {
+                        riskResult.explanation = [];
+                    }
                 }
             } else {
                 const notebookPayload = {
@@ -756,14 +781,20 @@ function initBurnoutSection() {
                 } else {
                     const fallbackResponse = await fetch(`${backendUrl}/risk/latest?user_id=${encodeURIComponent(watchUserId)}`);
                     if (!fallbackResponse.ok) {
-                        const body = await riskResponse.text();
-                        throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
+                        if (fallbackResponse.status === 404 && watchMetrics.syncRisk) {
+                            riskResult = { ...watchMetrics.syncRisk };
+                            riskResult.explanation = ['notebook model unavailable, showing latest Garmin sync risk', ...(riskResult.explanation || [])];
+                        } else {
+                            const body = await riskResponse.text();
+                            throw new Error(`Risk request failed (${riskResponse.status})${body ? `: ${body}` : ''}`);
+                        }
+                    } else {
+                        riskResult = await fallbackResponse.json();
+                        if (!Array.isArray(riskResult.explanation)) {
+                            riskResult.explanation = [];
+                        }
+                        riskResult.explanation.unshift('notebook model unavailable, showing latest baseline risk');
                     }
-                    riskResult = await fallbackResponse.json();
-                    if (!Array.isArray(riskResult.explanation)) {
-                        riskResult.explanation = [];
-                    }
-                    riskResult.explanation.unshift('notebook model unavailable, showing latest baseline risk');
                 }
             }
 
