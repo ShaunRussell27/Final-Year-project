@@ -7,6 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
+try:
+    from groq import Groq as GroqClient
+    _GROQ_AVAILABLE = True
+except ImportError:
+    _GROQ_AVAILABLE = False
+
 from .db import get_db, engine
 from .models import Base, DailySummary
 from .ml_service import BurnoutModelService, NotebookBurnoutModelService
@@ -283,6 +289,72 @@ def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> Ri
         risk_score=score,
         explanation=factors,
     )
+
+
+# ---------------------------------------------------------------------------
+# Groq LLM integration
+# ---------------------------------------------------------------------------
+_GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+_GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
+def _build_system_prompt(summary: DailySummary | None, risk: RiskOut | None) -> str:
+    lines = [
+        "You are a wellness and burnout prevention coach embedded in a personal health dashboard.",
+        "The user wears a Garmin smartwatch that tracks their biometrics.",
+        "Give concise, evidence-based, empathetic advice focused on burnout prevention, sleep, stress, and recovery.",
+        "Keep responses under 150 words unless the user explicitly asks for a detailed plan.",
+        "Do not repeat the raw numbers back to the user verbatim; interpret them in plain English.",
+    ]
+    if summary and risk:
+        lines.append(f"\nUser's latest biometric snapshot ({summary.date}):")
+        lines.append(f"  Burnout risk: {risk.risk_label} ({risk.risk_score}%)")
+        if risk.explanation:
+            lines.append(f"  Risk factors: {', '.join(risk.explanation)}")
+        if summary.sleep_minutes is not None:
+            h, m = divmod(summary.sleep_minutes, 60)
+            lines.append(f"  Sleep last night: {h}h {m}m")
+        if summary.sleep_score is not None:
+            lines.append(f"  Sleep quality score: {summary.sleep_score}/100")
+        if summary.resting_hr is not None:
+            lines.append(f"  Resting heart rate: {summary.resting_hr} bpm")
+        if summary.hrv_avg is not None:
+            lines.append(f"  HRV (avg): {summary.hrv_avg} ms")
+        if summary.avg_stress is not None:
+            lines.append(f"  Avg stress score: {summary.avg_stress}/100")
+        if summary.body_battery_max is not None:
+            lines.append(f"  Body battery peak: {summary.body_battery_max}/100")
+        if summary.steps is not None:
+            lines.append(f"  Steps: {summary.steps}")
+    else:
+        lines.append("\nNo watch data has been synced for this user yet.")
+    return "\n".join(lines)
+
+
+def _call_groq_llm(
+    message: str,
+    system_prompt: str,
+    history: list[dict] | None,
+) -> str | None:
+    if not _GROQ_AVAILABLE or not _GROQ_API_KEY:
+        return None
+    try:
+        client = GroqClient(api_key=_GROQ_API_KEY)
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        if history:
+            # Include last 10 turns to stay within token limits
+            messages.extend(history[-10:])
+        messages.append({"role": "user", "content": message})
+        completion = client.chat.completions.create(
+            model=_GROQ_MODEL,
+            messages=messages,
+            max_tokens=300,
+            temperature=0.7,
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as exc:
+        print(f"Groq LLM error: {exc}")
+        return None
 
 
 def _build_chatbot_reply(message: str, summary: DailySummary | None, risk: RiskOut | None) -> str:
@@ -652,7 +724,10 @@ def summaries(user_id: str, limit: int = 30, db: Session = Depends(get_db)):
 @app.post("/chatbot/coach", response_model=ChatResponseOut)
 def chatbot_coach(payload: ChatRequestIn, db: Session = Depends(get_db)):
     latest, risk = _latest_summary_and_risk(payload.user_id, db)
-    reply = _build_chatbot_reply(payload.message, latest, risk)
+
+    system_prompt = _build_system_prompt(latest, risk)
+    llm_reply = _call_groq_llm(payload.message, system_prompt, payload.history)
+    reply = llm_reply if llm_reply else _build_chatbot_reply(payload.message, latest, risk)
 
     return ChatResponseOut(
         reply=reply,

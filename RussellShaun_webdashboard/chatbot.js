@@ -36,7 +36,7 @@ function normalizeBackendUrl(urlValue) {
     return urlValue.trim().replace(/\/$/, '');
 }
 
-async function getPersonalizedBotResponse(userMessage, userId, backendUrl) {
+async function getPersonalizedBotResponse(userMessage, userId, backendUrl, history) {
     if (!backendUrl || !userId) {
         return null;
     }
@@ -47,6 +47,7 @@ async function getPersonalizedBotResponse(userMessage, userId, backendUrl) {
         body: JSON.stringify({
             user_id: userId,
             message: userMessage,
+            history: history.length > 0 ? history : undefined,
         }),
     });
 
@@ -72,6 +73,9 @@ window.initChatbot = function initChatbot() {
     if (!chatInput || !chatSendBtn || !chatHistory) {
         return;
     }
+
+    // Conversation history sent to the LLM for context (last 10 turns kept)
+    const conversationHistory = [];
 
     const burnoutUserId = document.getElementById('user_id');
     const burnoutBackendUrl = document.getElementById('backend_url');
@@ -110,8 +114,15 @@ window.initChatbot = function initChatbot() {
         const backendUrl = normalizeBackendUrl(chatBackendUrl?.value);
 
         try {
-            const personalized = await getPersonalizedBotResponse(message, userId, backendUrl);
+            const personalized = await getPersonalizedBotResponse(message, userId, backendUrl, conversationHistory);
             if (personalized) {
+                // Record this exchange in history so the LLM has context next turn
+                conversationHistory.push({ role: 'user', content: message });
+                conversationHistory.push({ role: 'assistant', content: personalized });
+                // Keep history bounded to 20 messages (10 turns)
+                if (conversationHistory.length > 20) {
+                    conversationHistory.splice(0, conversationHistory.length - 20);
+                }
                 addMessage(personalized, false);
                 return;
             }

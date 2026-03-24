@@ -66,6 +66,7 @@ class NotebookPredictIn(BaseModel):
 class ChatRequestIn(BaseModel):
     user_id: str = Field(..., examples=["shaun"])
     message: str = Field(..., examples=["How am I doing today?"])
+    history: Optional[list[dict]] = Field(default=None)  # [{"role": "user"|"assistant", "content": "..."}]
 
 
 class ChatResponseOut(BaseModel):
