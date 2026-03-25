@@ -102,6 +102,9 @@ async def _garmin_sync_loop() -> None:
 @app.on_event("startup")
 async def _startup_auto_sync() -> None:
     global _garmin_sync_task
+    # Groq diagnostics — visible in Railway logs
+    print(f"[Groq] Package available: {_GROQ_AVAILABLE}")
+    print(f"[Groq] API key set: {bool(_GROQ_API_KEY)} (starts with: {_GROQ_API_KEY[:8] + '...' if _GROQ_API_KEY else 'EMPTY'})")
     if not AUTO_SYNC_ENABLED:
         print("[Garmin Auto Sync] Disabled (set GARMIN_AUTO_SYNC_ENABLED=true to enable)")
         return
