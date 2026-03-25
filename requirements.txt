@@ -13,3 +13,4 @@ requests
 garminconnect
 garth
 python-dotenv
+groq
