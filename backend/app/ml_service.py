@@ -180,6 +180,25 @@ class NotebookBurnoutModelService:
         except ValueError:
             return False
 
+    # Garmin reports overnight average RMSSD, which is typically 3-5x higher than
+    # the short-term task-based RMSSD used in the SWELL/WESAD training data.
+    # Any hrv_avg above this threshold is treated as an overnight/watch measurement
+    # and remapped to the training distribution via z-score normalisation.
+    _GARMIN_HRV_THRESHOLD = 28.0   # ~99.9th pct of training RMSSD (mean=15, std=4.16)
+    _GARMIN_OVERNIGHT_MEAN = 50.0  # typical adult overnight RMSSD from Garmin
+    _GARMIN_OVERNIGHT_STD = 18.0
+
+    def _remap_garmin_hrv(self, hrv_avg: float) -> float:
+        """Map Garmin overnight HRV (ms) to the training-data RMSSD scale."""
+        try:
+            rmssd_idx = self.feature_names.index("RMSSD")
+            train_mean = float(self.scaler.mean_[rmssd_idx])
+            train_std = float(self.scaler.scale_[rmssd_idx])
+        except (ValueError, IndexError, AttributeError):
+            return hrv_avg  # can't remap – fall back to raw value
+        z = (hrv_avg - self._GARMIN_OVERNIGHT_MEAN) / self._GARMIN_OVERNIGHT_STD
+        return max(1.0, train_mean + z * train_std)
+
     def predict(
         self,
         resting_hr: Optional[float],
@@ -193,10 +212,14 @@ class NotebookBurnoutModelService:
         if hr_value is None or hr_value <= 0 or hrv_avg <= 0:
             return None
 
+        # Remap Garmin overnight HRV to match training-data RMSSD scale
+        garmin_overnight = hrv_avg > self._GARMIN_HRV_THRESHOLD
+        effective_hrv = self._remap_garmin_hrv(float(hrv_avg)) if garmin_overnight else float(hrv_avg)
+
         feature_values = {
             "HR": float(hr_value),
-            "RMSSD": float(hrv_avg),
-            "SDRR": float(hrv_avg) * 1.1,
+            "RMSSD": effective_hrv,
+            "SDRR": effective_hrv * 1.1,
             "MEAN_RR": 60000.0 / float(hr_value),
             "MEDIAN_RR": 60000.0 / float(hr_value),
         }
@@ -238,10 +261,16 @@ class NotebookBurnoutModelService:
             f"stressed-class probability: {confidence:.2f}%",
         ]
 
-        if hrv_avg < 40:
+        if garmin_overnight:
+            explanation.append(f"Garmin overnight HRV ({hrv_avg:.0f} ms) normalised to training scale")
+
+        # Thresholds use the raw Garmin HRV for user-facing messages
+        if hrv_avg < 30:
+            explanation.append("very low HRV")
+        elif hrv_avg < 45:
             explanation.append("low HRV")
-        elif hrv_avg < 55:
-            explanation.append("HRV below usual recovery range")
+        elif hrv_avg < 60:
+            explanation.append("HRV below usual overnight recovery range")
 
         if hr_value >= 75:
             explanation.append("high resting HR")
