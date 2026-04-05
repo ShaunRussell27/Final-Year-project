@@ -24,6 +24,7 @@ This repository contains an end-to-end burnout monitoring prototype that combine
 
 - **Web dashboard**: `RussellShaun_webdashboard/`
   - Burnout tab supports watch-data mode and manual metric override.
+  - Chatbot tab (`sections/chatbot.html`, `chatbot.js`) provides an AI coaching assistant powered by the `/chatbot/coach` endpoint, falling back to rule-based replies when no LLM key is configured.
 
 ## Repository Layout
 
@@ -67,10 +68,22 @@ Set `Backend URL` to your running API (for local: `http://127.0.0.1:8000`).
 
 - `GET /health` — health check
 - `GET /sync/status` — auto-sync state and last sync result
-- `POST /ingest/healthkit` — upsert daily summary metrics
+- `POST /ingest/healthkit` — upsert daily summary metrics (JSON payload)
+- `POST /ingest/garmin-export` — store a raw Garmin export file (multipart upload; MVP stores metadata only)
 - `GET /summary/latest?user_id=...` — latest summary for a user
+- `GET /summaries?user_id=...&limit=30` — paginated list of summaries for a user (newest first)
 - `GET /risk/latest?user_id=...` — backend model risk (Isolation Forest / fallback scoring)
 - `POST /risk/notebook` — notebook model risk using HR/HRV inputs
+- `POST /chatbot/coach` — AI coaching chatbot; uses Groq LLM when `GROQ_API_KEY` is set, falls back to rule-based replies
+
+## Chatbot / AI Coach
+
+The `/chatbot/coach` endpoint accepts a `user_id`, a `message`, and an optional `history` array. It:
+1. Fetches the user's latest daily summary and risk score from the database.
+2. If `GROQ_API_KEY` is set, calls the Groq LLM with a personalised system prompt.
+3. Otherwise falls back to rule-based keyword matching (stress, sleep, plan, etc.) for a contextual reply.
+
+The dashboard chatbot UI (`sections/chatbot.html`) calls this endpoint and displays the reply inline.
 
 ## Garmin Sync Configuration
 
