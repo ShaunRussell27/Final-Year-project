@@ -62,12 +62,14 @@ Deployed on Railway. Key files:
 | Endpoint | Method | Description |
 |---|---|---|
 | `/health` | GET | Health check |
-| `/ingest/healthkit` | POST | Ingest a daily health summary |
-| `/summaries/{user_id}` | GET | Retrieve stored daily summaries |
-| `/risk/latest` | GET | Burnout risk from Isolation Forest model |
-| `/risk/notebook` | GET/POST | Burnout risk from notebook model |
-| `/sync/status` | GET | Garmin auto-sync status |
-| `/chat` | POST | LLM chatbot via Groq API |
+| `/sync/status` | GET | Garmin auto-sync state and last run result |
+| `/ingest/healthkit` | POST | Ingest a daily health summary (JSON) |
+| `/ingest/garmin-export` | POST | Upload a Garmin export file (multipart) |
+| `/summary/latest` | GET | Latest daily summary for a user (`?user_id=`) |
+| `/summaries` | GET | Paginated list of summaries for a user (`?user_id=&limit=30`) |
+| `/risk/latest` | GET | Burnout risk from blended Isolation Forest + notebook model |
+| `/risk/notebook` | POST | Burnout risk from notebook model using HR/HRV inputs |
+| `/chatbot/coach` | POST | AI coaching chatbot (Groq LLM with rule-based fallback) |
 
 #### Database
 

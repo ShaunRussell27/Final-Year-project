@@ -181,19 +181,9 @@ collected 63 items
 
 From an evaluation perspective, the system demonstrated readiness for final project submission, with performance and behaviour aligned to expected project goals. Minor improvements remain possible in future iterations, particularly in expanding automated test coverage to include frontend UI automation and stress-testing under larger real-world data volumes, but these do not affect the current functional completeness of the delivered system.
 
-Testing for this project was approached in three complementary layers: **unit testing** of individual logic components, **integration testing** of the REST API through an in-memory HTTP test client, and **observational/exploratory testing** of the ML model outputs. This multi-layer approach ensured that both the correctness of discrete functions and the behaviour of the full request-response cycle could be validated independently.
-
-The testing framework used was **pytest** (v9.0.2) running on Python 3.13.4. The FastAPI `TestClient` (backed by `httpx`) was used to exercise all HTTP endpoints without requiring a live server process. The production PostgreSQL database was replaced with an **in-memory SQLite** instance for the test session, guaranteeing test isolation and repeatability without side effects on any deployed environment.
-
-All tests reside in `backend/tests/test_backend.py` and can be executed with a single command:
-
-```bash
-python -m pytest tests/test_backend.py -v
-```
-
 ---
 
-## 5.2 Test Coverage Overview
+## 6.5 Detailed Test Coverage
 
 A total of **63 test cases** were written across **12 test classes**, covering all major components of the system. On the final run, all 63 tests passed in **7.26 seconds**.
 
@@ -218,11 +208,11 @@ A total of **63 test cases** were written across **12 test classes**, covering a
 
 ---
 
-## 5.3 Unit Tests
+## 6.6 Unit Tests
 
 Unit tests target individual classes and functions in isolation, without any database or network calls.
 
-### 5.3.1 Burnout IsolationForest Service (`BurnoutModelService`)
+### 6.6.1 Burnout IsolationForest Service (`BurnoutModelService`)
 
 The `BurnoutModelService` wraps a trained `IsolationForest` model that detects anomalous physiological patterns in wearable data. Nine unit tests verify its internal behaviour:
 
@@ -232,7 +222,7 @@ The `BurnoutModelService` wraps a trained `IsolationForest` model that detects a
 - **Risk score normalisation** — Without calibration scalars (`score_min`/`score_max`), `_score_to_risk()` returns the neutral default of 50. With explicit bounds, scores are correctly clamped to the `[0, 100]` range with no overflow.
 - **Artifact loading** — Loading from a non-existent path returns `False` cleanly. With the trained `burnout_iforest.joblib` artifact present (which it was during testing), loading succeeds and an end-to-end prediction on a high-stress input (low sleep, high HR, low steps) returns a valid labelled result.
 
-### 5.3.2 Notebook Supervised Model Service (`NotebookBurnoutModelService`)
+### 6.6.2 Notebook Supervised Model Service (`NotebookBurnoutModelService`)
 
 This service wraps the Random Forest / logistic model trained in the project notebook on the SWELL-WESAD HRV dataset. Six unit tests cover its behaviour:
 
@@ -241,7 +231,7 @@ This service wraps the Random Forest / logistic model trained in the project not
 - **Stress-label detection** — The `_is_stress_label()` helper correctly identifies the labels `"1"`, `"stressed"`, `"burnout"`, `"high"` as stressed, and `"0"`, `"normal"` as non-stressed, regardless of how the training pipeline encoded the target class.
 - **End-to-end inference** — With `burnout_model.pkl` and `scaler.pkl` present (notebooks directory), the full pipeline loads, scales the input features, runs inference, and returns a `NotebookModelPrediction` with a `confidence` value in `[0, 100]`.
 
-### 5.3.3 Rule-Based Risk Logic (`_compute_risk`)
+### 6.6.3 Rule-Based Risk Logic (`_compute_risk`)
 
 Before the ML model was added, burnout risk was calculated by a deterministic rule engine comparing today's metrics against a 7-day rolling baseline. Eight unit tests validate this logic:
 
@@ -258,7 +248,7 @@ Before the ML model was added, burnout risk was calculated by a deterministic ru
 
 All 8 tests passed. The clamping test in particular confirmed that adversarial inputs (HR of 120 bpm, 1 hour of sleep, 0 steps) do not produce a score above 100.
 
-### 5.3.4 Schema Validation (`HealthKitIn`, `NotebookPredictIn`, `ChatRequestIn`)
+### 6.6.4 Schema Validation (`HealthKitIn`, `NotebookPredictIn`, `ChatRequestIn`)
 
 Seven Pydantic schema tests confirm that the request models enforce correct field constraints:
 
@@ -267,7 +257,7 @@ Seven Pydantic schema tests confirm that the request models enforce correct fiel
 - `ChatRequestIn` requires `user_id`; missing it raises `ValidationError`.
 - Valid payloads construct without error and field values are accessible as expected.
 
-### 5.3.5 Chatbot Reply Logic (`_build_chatbot_reply`)
+### 6.6.5 Chatbot Reply Logic (`_build_chatbot_reply`)
 
 Six tests directly exercise the chatbot text-generation function without any database or HTTP overhead:
 
@@ -280,11 +270,11 @@ Six tests directly exercise the chatbot text-generation function without any dat
 
 ---
 
-## 5.4 Integration Tests (API Endpoints)
+## 6.7 Integration Tests (API Endpoints)
 
 Integration tests exercise the full HTTP request cycle through all middleware (CORS, dependency injection, exception handlers) against an in-memory SQLite database.
 
-### 5.4.1 Health Check (`GET /health`)
+### 6.7.1 Health Check (`GET /health`)
 
 The simplest possible test confirms the application starts up correctly and returns `{"status": "ok"}` with HTTP 200. This also acts as a smoke test — if the app or its models fail to load at startup, all subsequent tests would fail here first.
 
@@ -293,7 +283,7 @@ TestHealthEndpoint::test_health_returns_ok       PASSED
 TestHealthEndpoint::test_health_response_time    PASSED
 ```
 
-### 5.4.2 HealthKit Data Ingestion (`POST /ingest/healthkit`)
+### 6.7.2 HealthKit Data Ingestion (`POST /ingest/healthkit`)
 
 Five tests cover the core data ingestion pathway:
 
@@ -307,7 +297,7 @@ Five tests cover the core data ingestion pathway:
 
 The upsert test is particularly important: it sends a row with `steps=5000`, then re-sends with `steps=12000` for the same date and user, and asserts the final stored value is `12000`, confirming the deduplication logic in `upsert_daily_summary()` works correctly.
 
-### 5.4.3 Summary Retrieval (`GET /summary/latest`, `GET /summaries`)
+### 6.7.3 Summary Retrieval (`GET /summary/latest`, `GET /summaries`)
 
 Four tests verify that stored data can be retrieved:
 
@@ -316,7 +306,7 @@ Four tests verify that stored data can be retrieved:
 - `GET /summaries?user_id=<known>&limit=5` → HTTP 200, JSON array.
 - `GET /summaries?user_id=nobody-xyz2` → HTTP 200, empty array `[]` (not 404).
 
-### 5.4.4 Risk Assessment (`GET /risk/latest`)
+### 6.7.4 Risk Assessment (`GET /risk/latest`)
 
 Three tests probe the risk endpoint:
 
@@ -324,7 +314,7 @@ Three tests probe the risk endpoint:
 - **Response schema** — With one seeded row, the response contains `risk_label`, `risk_score` (0–100), and `explanation` with valid values.
 - **Valid label with normal data** — Seeding 8 rows of consistent healthy data confirms the response is structurally valid. (Note: the IsolationForest model may still classify consistent-but-low-variance data patterns as anomalous depending on its training distribution — this is expected ML behaviour and the test validates the response format rather than imposing a label.)
 
-### 5.4.5 Notebook ML Prediction (`POST /risk/notebook`)
+### 6.7.5 Notebook ML Prediction (`POST /risk/notebook`)
 
 Five tests cover the HRV-based prediction endpoint:
 
@@ -338,7 +328,7 @@ Five tests cover the HRV-based prediction endpoint:
 
 The tests accept either HTTP 200 (model loaded) or HTTP 503 (model artifact missing) as valid outcomes, making the tests environment-agnostic: they will pass on a local dev machine with trained `.pkl` files and also on a fresh CI environment where the notebooks have not yet been run.
 
-### 5.4.6 Chatbot Coach (`POST /chatbot/coach`)
+### 6.7.6 Chatbot Coach (`POST /chatbot/coach`)
 
 Five integration tests exercise the chatbot endpoint:
 
@@ -348,20 +338,20 @@ Five integration tests exercise the chatbot endpoint:
 - **Stress keyword** → Reply contains at least one of: "stress", "burnout", "recovery", "breathing", "risk".
 - **Sleep keyword** → 200 response confirming no crashes on sleep-related queries.
 
-### 5.4.7 Garmin Export Ingest (`POST /ingest/garmin-export`)
+### 6.7.7 Garmin Export Ingest (`POST /ingest/garmin-export`)
 
 Two file-upload tests verify the multipart form endpoint:
 
 - An empty file body (`b""`) is correctly rejected with HTTP 400.
 - A non-empty JSON file is accepted and returns `{"ok": true}`.
 
-### 5.4.8 Sync Status (`GET /sync/status`)
+### 6.7.8 Sync Status (`GET /sync/status`)
 
 A single structural test confirms the sync status endpoint returns the expected `sync` object with `enabled`, `interval_minutes`, and related fields. With `GARMIN_AUTO_SYNC_ENABLED=false` set in the test environment, `enabled` is confirmed to be `False`.
 
 ---
 
-## 5.5 ML Model Evaluation
+## 6.8 ML Model Evaluation
 
 In addition to the functional tests above, the notebook training pipeline (`backend/train_notebook_model.py`) evaluates the supervised classifier on a held-out test set from the SWELL-WESAD HRV dataset. The metrics recorded in `notebooks/burnout_model_metrics.json` are:
 
@@ -384,13 +374,13 @@ The model was trained on March 9, 2026 (captured in `trained_at`) and the artifa
 
 ---
 
-## 5.6 Deprecation Warnings
+## 6.9 Deprecation Warnings
 
 Five deprecation warnings were raised during the test run, all originating from FastAPI's `@app.on_event("startup")` and `@app.on_event("shutdown")` decorators. These are informational only — the functionality works correctly. FastAPI recommends migrating to the newer `lifespan` context manager pattern in a future version. This deprecation does not affect any test outcomes and is logged here for transparency.
 
 ---
 
-## 5.7 Summary
+## 6.10 Summary
 
 | Category | Tests | Passed | Failed |
 |---|---|---|---|
