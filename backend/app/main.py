@@ -1,5 +1,6 @@
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
@@ -18,7 +19,28 @@ from .models import Base, DailySummary
 from .ml_service import BurnoutModelService, NotebookBurnoutModelService
 from .schemas import HealthKitIn, DailySummaryOut, RiskOut, NotebookPredictIn, ChatRequestIn, ChatResponseOut
 
-app = FastAPI(title="Burnout Project Backend")
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    global _garmin_sync_task
+    # Groq diagnostics — visible in Railway logs
+    print(f"[Groq] Package available: {_GROQ_AVAILABLE}")
+    print(f"[Groq] API key set: {bool(_GROQ_API_KEY)} (starts with: {_GROQ_API_KEY[:8] + '...' if _GROQ_API_KEY else 'EMPTY'})")
+    if AUTO_SYNC_ENABLED:
+        _garmin_sync_task = asyncio.create_task(_garmin_sync_loop())
+        print(f"[Garmin Auto Sync] Enabled every {max(1, AUTO_SYNC_INTERVAL_MINUTES)} minute(s)")
+    else:
+        print("[Garmin Auto Sync] Disabled (set GARMIN_AUTO_SYNC_ENABLED=true to enable)")
+    yield
+    if _garmin_sync_task is not None:
+        _garmin_sync_task.cancel()
+        try:
+            await _garmin_sync_task
+        except asyncio.CancelledError:
+            pass
+        _garmin_sync_task = None
+
+
+app = FastAPI(title="Burnout Project Backend", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -98,35 +120,6 @@ async def _garmin_sync_loop() -> None:
         await asyncio.sleep(max(1, AUTO_SYNC_INTERVAL_MINUTES) * 60)
         await _run_garmin_sync_once_safe()
 
-
-@app.on_event("startup")
-async def _startup_auto_sync() -> None:
-    global _garmin_sync_task
-    # Groq diagnostics — visible in Railway logs
-    print(f"[Groq] Package available: {_GROQ_AVAILABLE}")
-    print(f"[Groq] API key set: {bool(_GROQ_API_KEY)} (starts with: {_GROQ_API_KEY[:8] + '...' if _GROQ_API_KEY else 'EMPTY'})")
-    if not AUTO_SYNC_ENABLED:
-        print("[Garmin Auto Sync] Disabled (set GARMIN_AUTO_SYNC_ENABLED=true to enable)")
-        return
-
-    _garmin_sync_task = asyncio.create_task(_garmin_sync_loop())
-    print(
-        f"[Garmin Auto Sync] Enabled every {max(1, AUTO_SYNC_INTERVAL_MINUTES)} minute(s)"
-    )
-
-
-@app.on_event("shutdown")
-async def _shutdown_auto_sync() -> None:
-    global _garmin_sync_task
-    if _garmin_sync_task is None:
-        return
-
-    _garmin_sync_task.cancel()
-    try:
-        await _garmin_sync_task
-    except asyncio.CancelledError:
-        pass
-    _garmin_sync_task = None
 
 SOURCE_PRIORITY = ["garmin_export", "healthkit"]  # garmin watch sync takes priority over manual entries
 
