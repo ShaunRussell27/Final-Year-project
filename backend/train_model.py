@@ -15,7 +15,7 @@ def _build_training_frame(df: pd.DataFrame) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.sort_values(["user_id", "date"])
 
-    metric_cols = ["sleep_minutes", "resting_hr", "steps", "avg_hr"]
+    metric_cols = ["sleep_minutes", "resting_hr", "steps", "avg_hr", "body_battery_max", "sleep_score"]
 
     for col in metric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -31,8 +31,10 @@ def _build_training_frame(df: pd.DataFrame) -> pd.DataFrame:
     df["steps_ratio"] = (df["steps"] / df["steps_baseline"]).replace([np.inf, -np.inf], np.nan)
     df["resting_hr_delta"] = (df["resting_hr"] - df["resting_hr_baseline"])
     df["avg_hr_delta"] = (df["avg_hr"] - df["avg_hr_baseline"])
+    df["body_battery_ratio"] = (df["body_battery_max"] / df["body_battery_max_baseline"]).replace([np.inf, -np.inf], np.nan)
+    df["sleep_score_ratio"] = (df["sleep_score"] / df["sleep_score_baseline"]).replace([np.inf, -np.inf], np.nan)
 
-    feature_cols = ["sleep_ratio", "resting_hr_delta", "steps_ratio", "avg_hr_delta"]
+    feature_cols = ["sleep_ratio", "resting_hr_delta", "steps_ratio", "avg_hr_delta", "body_battery_ratio", "sleep_score_ratio"]
     features = df[feature_cols].copy().fillna(0.0)
 
     return features
@@ -58,6 +60,8 @@ def train_model(output_path: str) -> None:
                 "resting_hr": row.resting_hr,
                 "steps": row.steps,
                 "avg_hr": row.avg_hr,
+                "body_battery_max": row.body_battery_max,
+                "sleep_score": row.sleep_score,
             }
         )
 
@@ -76,7 +80,7 @@ def train_model(output_path: str) -> None:
 
     payload = {
         "model": model,
-        "feature_names": ["sleep_ratio", "resting_hr_delta", "steps_ratio", "avg_hr_delta"],
+        "feature_names": ["sleep_ratio", "resting_hr_delta", "steps_ratio", "avg_hr_delta", "body_battery_ratio", "sleep_score_ratio"],
         "score_min": float(np.min(scores)),
         "score_max": float(np.max(scores)),
         "trained_at": datetime.now(timezone.utc).isoformat(),

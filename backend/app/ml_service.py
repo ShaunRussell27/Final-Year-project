@@ -34,6 +34,8 @@ class BurnoutModelService:
             "resting_hr_delta",
             "steps_ratio",
             "avg_hr_delta",
+            "body_battery_ratio",
+            "sleep_score_ratio",
         ]
         self.score_min: Optional[float] = None
         self.score_max: Optional[float] = None
@@ -93,6 +95,8 @@ class BurnoutModelService:
         baseline_resting_hr = self._avg([r.resting_hr for r in baseline_rows])
         baseline_steps = self._avg([r.steps for r in baseline_rows])
         baseline_avg_hr = self._avg([r.avg_hr for r in baseline_rows])
+        baseline_body_battery = self._avg([r.body_battery_max for r in baseline_rows])
+        baseline_sleep_score = self._avg([r.sleep_score for r in baseline_rows])
 
         explanation: list[str] = []
 
@@ -118,7 +122,19 @@ class BurnoutModelService:
         if latest.avg_hr is not None and baseline_avg_hr is not None:
             avg_hr_delta = float(latest.avg_hr - baseline_avg_hr)
 
-        features = [sleep_ratio, resting_hr_delta, steps_ratio, avg_hr_delta]
+        body_battery_ratio = 1.0
+        if latest.body_battery_max is not None and baseline_body_battery and baseline_body_battery > 0:
+            body_battery_ratio = float(latest.body_battery_max / baseline_body_battery)
+            if body_battery_ratio < 0.80:
+                explanation.append("body battery is below baseline")
+
+        sleep_score_ratio = 1.0
+        if latest.sleep_score is not None and baseline_sleep_score and baseline_sleep_score > 0:
+            sleep_score_ratio = float(latest.sleep_score / baseline_sleep_score)
+            if sleep_score_ratio < 0.85:
+                explanation.append("sleep quality score is below baseline")
+
+        features = [sleep_ratio, resting_hr_delta, steps_ratio, avg_hr_delta, body_battery_ratio, sleep_score_ratio]
         return features, explanation
 
     def _score_to_risk(self, score: float) -> int:
