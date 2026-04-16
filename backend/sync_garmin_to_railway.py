@@ -138,12 +138,16 @@ def _get_client(email: str, password: str, token_store: str) -> Garmin:
         # (it's only populated during login()). Without it every API call goes to
         # /usersummary/daily/None which returns 403.  Fetch the social profile to
         # populate it now.
-        try:
-            profile = client.connectapi("/userprofile-service/socialProfile")
-            if isinstance(profile, dict):
-                client.display_name = profile.get("displayName") or profile.get("userName")
-        except Exception:
-            pass
+        # NOTE: if this raises (e.g. 429 rate limit), let the exception propagate
+        # so the sync fails cleanly rather than proceeding with display_name=None.
+        profile = client.connectapi("/userprofile-service/socialProfile")
+        if isinstance(profile, dict):
+            client.display_name = profile.get("displayName") or profile.get("userName")
+        if not client.display_name:
+            raise RuntimeError(
+                "Could not resolve Garmin display_name from saved token. "
+                "Sync aborted to avoid API calls to /daily/None."
+            )
 
     return client
 

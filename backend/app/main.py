@@ -71,7 +71,9 @@ def _int_env(name: str, default: int, minimum: int = 1) -> int:
 
 AUTO_SYNC_ENABLED = os.getenv("GARMIN_AUTO_SYNC_ENABLED", "false").lower() == "true"
 AUTO_SYNC_INTERVAL_MINUTES = _int_env("GARMIN_AUTO_SYNC_INTERVAL_MINUTES", 180, minimum=1)
-AUTO_SYNC_RUN_ON_STARTUP = os.getenv("GARMIN_AUTO_SYNC_RUN_ON_STARTUP", "true").lower() == "true"
+# Default to False — running on startup causes immediate hits to Garmin's
+# OAuth exchange endpoint on every Railway deploy, triggering 429 rate limits.
+AUTO_SYNC_RUN_ON_STARTUP = os.getenv("GARMIN_AUTO_SYNC_RUN_ON_STARTUP", "false").lower() == "true"
 
 _garmin_sync_task: asyncio.Task | None = None
 _garmin_sync_status: dict[str, object] = {
