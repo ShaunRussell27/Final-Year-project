@@ -485,6 +485,21 @@ function initBurnoutSection() {
         const mScore = selfReport?.moodScore;
         const wStress = selfReport?.watchAvgStress;
         const wBattery = selfReport?.watchBodyBattery;
+        const coping = selfReport?.copingActivities || [];
+
+        // Acknowledge completed coping activities
+        if (coping.length > 0) {
+            const labels = {
+                exercise: 'exercised',
+                music: 'listened to music',
+                meditation: 'practised meditation / breathing',
+                outdoors: 'spent time outside',
+                social: 'connected socially',
+                nap: 'taken a rest / nap',
+            };
+            const done = coping.map((c) => labels[c] || c).join(', ');
+            html += `<li>✅ Great work — you've already ${done} today. These activities actively help reduce stress and burnout.</li>`;
+        }
 
         if (sleepMinutes > 0 && sleepMinutes < 420) {
             html += '<li>Aim for 7-9 hours of quality sleep each night</li>';
@@ -495,23 +510,47 @@ function initBurnoutSection() {
         }
 
         if (steps < 8000) {
-            html += '<li>Increase daily activity to at least 8,000 steps</li>';
+            if (coping.includes('exercise')) {
+                html += '<li>Step count is low but you exercised today — great! A short walk later can still top up your activity.</li>';
+            } else {
+                html += '<li>Increase daily activity to at least 8,000 steps</li>';
+            }
         }
 
         if (Number.isFinite(wStress) && wStress >= 75) {
-            html += '<li>Your Garmin stress score is very high. Schedule at least one 10-minute rest block today and avoid additional stressors.</li>';
+            if (coping.includes('meditation') || coping.includes('music') || coping.includes('outdoors')) {
+                html += '<li>Your Garmin stress score is very high, but your coping activities today are helping. Keep it up and avoid any additional stressors this evening.</li>';
+            } else {
+                html += '<li>Your Garmin stress score is very high. Schedule at least one 10-minute rest block today and avoid additional stressors.</li>';
+            }
         } else if (Number.isFinite(wStress) && wStress >= 60) {
-            html += '<li>Your Garmin stress score is elevated. Short breathing exercises and a lighter afternoon schedule can help.</li>';
+            if (coping.includes('meditation') || coping.includes('music')) {
+                html += '<li>Garmin stress is elevated but your wind-down activities are helping — keep going with them.</li>';
+            } else {
+                html += '<li>Your Garmin stress score is elevated. Short breathing exercises and a lighter afternoon schedule can help.</li>';
+            }
         } else if (Number.isFinite(wBattery) && wBattery <= 20) {
             html += '<li>Body battery is critically low — avoid intense workouts and prioritise sleep tonight.</li>';
         } else if (Number.isFinite(wBattery) && wBattery <= 40) {
-            html += '<li>Body battery is low. Consider a longer sleep window and a shorter or easier training session.</li>';
+            if (coping.includes('nap')) {
+                html += '<li>Body battery is low. Good that you rested today — prioritise an early night to rebuild it fully.</li>';
+            } else {
+                html += '<li>Body battery is low. Consider a longer sleep window and a shorter or easier training session.</li>';
+            }
         }
 
         if (Number.isFinite(percStress) && percStress >= 75) {
-            html += '<li>Your stress level is very high. Try a 10-minute breathing or mindfulness exercise before your next task.</li>';
+            if (coping.includes('meditation') || coping.includes('music') || coping.includes('outdoors') || coping.includes('social')) {
+                html += '<li>Your stress is very high but you\'ve taken positive steps today. Continue with those activities and try a 10-minute breathing exercise before your next task.</li>';
+            } else {
+                html += '<li>Your stress level is very high. Try a 10-minute breathing or mindfulness exercise before your next task.</li>';
+            }
         } else if (Number.isFinite(percStress) && percStress >= 60) {
-            html += '<li>Your stress is elevated. Take short breaks every 90 minutes and limit caffeine after 2 pm.</li>';
+            if (coping.includes('music') || coping.includes('outdoors')) {
+                html += '<li>Stress is elevated but your chosen activities are working in your favour — keep it up and take short breaks every 90 minutes.</li>';
+            } else {
+                html += '<li>Your stress is elevated. Take short breaks every 90 minutes and limit caffeine after 2 pm.</li>';
+            }
         }
 
         if (Number.isFinite(wkHrs) && wkHrs > 10) {
@@ -521,7 +560,23 @@ function initBurnoutSection() {
         }
 
         if (Number.isFinite(mScore) && mScore <= 2) {
-            html += '<li>Your mood is low — a short walk, social connection, or enjoyable activity can help recharge.</li>';
+            if (coping.includes('social') || coping.includes('music') || coping.includes('outdoors')) {
+                html += '<li>Your mood is low — you\'ve already taken some helpful steps. A short walk or another social interaction can help further.</li>';
+            } else {
+                html += '<li>Your mood is low — a short walk, social connection, or listening to music can help recharge.</li>';
+            }
+        }
+
+        // Suggest activities not yet done when risk is medium or high
+        if (riskLevel !== 'LOW' && coping.length < 3) {
+            const suggestions = [];
+            if (!coping.includes('exercise')) suggestions.push('a short workout or walk');
+            if (!coping.includes('music')) suggestions.push('listening to music');
+            if (!coping.includes('meditation')) suggestions.push('a 5-minute breathing exercise');
+            if (!coping.includes('outdoors')) suggestions.push('some time outside');
+            if (suggestions.length > 0) {
+                html += `<li>💡 Try ${suggestions.slice(0, 2).join(' or ')} to help bring your stress level down.</li>`;
+            }
         }
 
         if (Array.isArray(riskResult?.explanation) && riskResult.explanation.length) {
@@ -623,6 +678,7 @@ function initBurnoutSection() {
         const workHours = parseFloat(document.getElementById('work_hours')?.value);
         const moodRadio = document.querySelector('input[name="mood_score"]:checked');
         const moodScore = moodRadio ? parseInt(moodRadio.value, 10) : null;
+        const copingActivities = [...document.querySelectorAll('input[name="coping_activity"]:checked')].map((cb) => cb.value);
 
         if (!userId) {
             setStatus('missing user_id');
@@ -770,6 +826,7 @@ function initBurnoutSection() {
                     perceived_stress: Number.isFinite(perceivedStress) && perceivedStress >= 0 ? perceivedStress : null,
                     work_hours: Number.isFinite(workHours) && workHours >= 0 ? workHours : null,
                     mood_score: moodScore,
+                    coping_activities: copingActivities.length > 0 ? copingActivities : null,
                 };
 
                 const riskResponse = await fetch(`${backendUrl}/risk/notebook`, {
@@ -807,7 +864,7 @@ function initBurnoutSection() {
                 summaryResult = await summaryResponse.json();
             }
 
-            displayResults(riskResult, summaryResult, { perceivedStress, workHours, moodScore, watchAvgStress: effectiveAvgStress, watchBodyBattery: effectiveBodyBattery, watchSleepScore: effectiveSleepScore });
+            displayResults(riskResult, summaryResult, { perceivedStress, workHours, moodScore, copingActivities, watchAvgStress: effectiveAvgStress, watchBodyBattery: effectiveBodyBattery, watchSleepScore: effectiveSleepScore });
             setStatus('done');
             await refreshSyncStatus();
         } catch (error) {

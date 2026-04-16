@@ -642,6 +642,44 @@ input[type="range"] {
     display: none;
 }
 
+/* Coping Activities Grid */
+.coping-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.coping-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 2px solid #e0e0e0;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 13px;
+    background: #fff;
+    transition: border-color 0.2s ease, background 0.2s ease;
+    user-select: none;
+}
+
+.coping-option:hover {
+    border-color: #43a85e;
+    background: #f0fff4;
+}
+
+.coping-option input[type="checkbox"] {
+    display: none;
+}
+
+.coping-option:has(input:checked) {
+    border-color: #43a85e;
+    background: #e6f7ec;
+    color: #276138;
+    font-weight: 600;
+}
+
 /* When Garmin watch stress overrides the manual slider */
 .watch-data-available input[type="range"] {
     opacity: 0.35;

@@ -669,6 +669,27 @@ def risk_notebook(payload: NotebookPredictIn):
             adjustment -= 5
             extra_factors.append("good self-reported mood")
 
+    # Coping activities — each unique activity reduces the score by 4 pts (max -15)
+    _COPING_WEIGHTS = {
+        "exercise":  5,
+        "meditation": 4,
+        "outdoors":   3,
+        "music":      3,
+        "social":     3,
+        "nap":        3,
+    }
+    if payload.coping_activities:
+        coping_reduction = min(15, sum(_COPING_WEIGHTS.get(a, 2) for a in set(payload.coping_activities)))
+        if coping_reduction > 0:
+            adjustment -= coping_reduction
+            activity_labels = {
+                "exercise": "exercise", "meditation": "meditation/breathing",
+                "outdoors": "time outside", "music": "music",
+                "social": "social connection", "nap": "rest/nap",
+            }
+            done = ", ".join(activity_labels.get(a, a) for a in set(payload.coping_activities) if a in _COPING_WEIGHTS)
+            extra_factors.append(f"coping activities today reduced risk: {done} (-{coping_reduction} pts)")
+
     adjusted_score = max(0, min(100, prediction.risk_score + adjustment))
     combined_explanation = prediction.explanation + extra_factors
 

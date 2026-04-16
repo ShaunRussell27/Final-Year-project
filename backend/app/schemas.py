@@ -61,6 +61,7 @@ class NotebookPredictIn(BaseModel):
     perceived_stress: Optional[int] = Field(default=None, ge=0, le=100)  # 0-100, same scale as Garmin avg_stress
     work_hours: Optional[float] = Field(default=None, ge=0, le=24)       # hours worked/studied today
     mood_score: Optional[int] = Field(default=None, ge=1, le=5)          # 1=very poor, 5=excellent
+    coping_activities: Optional[list[str]] = Field(default=None)         # e.g. ["exercise", "music"]
 
 
 class ChatRequestIn(BaseModel):
