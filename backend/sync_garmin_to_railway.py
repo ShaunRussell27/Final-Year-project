@@ -157,6 +157,11 @@ def _safe_get(d: dict[str, Any] | None, *keys: str) -> Any:
     return current
 
 
+# Garmin enforces a short-term call budget. These waits give the rate-limit
+# window time to clear between retries (30 s → 90 s → 180 s).
+_RATE_LIMIT_BACKOFF_SECONDS = [30, 90, 180]
+
+
 def _garmin_call_with_retry(fn: Any, *args: Any, max_retries: int = 3) -> Any:
     """Call a Garmin API function with exponential backoff on 429 rate-limit errors."""
     for attempt in range(max_retries):
@@ -164,8 +169,8 @@ def _garmin_call_with_retry(fn: Any, *args: Any, max_retries: int = 3) -> Any:
             return fn(*args)
         except Exception as exc:
             if "429" in str(exc) and attempt < max_retries - 1:
-                wait = 2 ** (attempt + 1)  # 2s, then 4s
-                print(f"[GARMIN RATE LIMIT] 429 on attempt {attempt + 1}, retrying in {wait}s...")
+                wait = _RATE_LIMIT_BACKOFF_SECONDS[min(attempt, len(_RATE_LIMIT_BACKOFF_SECONDS) - 1)]
+                print(f"[GARMIN RATE LIMIT] 429 on attempt {attempt + 1}, waiting {wait}s before retry...")
                 time.sleep(wait)
             else:
                 raise
@@ -299,9 +304,16 @@ def run_sync() -> dict[str, Any]:
                 _garmin_client_cache = None
                 _garmin_client_cache_key = ""
             skipped_days.append({"date": date_str, "reason": reason})
+            # If Garmin is still rate-limiting after all retries, pause before the
+            # next day so we don't burn through the remaining quota immediately.
+            if "429" in reason:
+                print("[GARMIN RATE LIMIT] Still rate-limited after retries — pausing 60s before next day.")
+                time.sleep(60)
+                current += dt.timedelta(days=1)
+                continue
 
         # Brief pause between days to stay well within Garmin's rate limits
-        time.sleep(1)
+        time.sleep(2)
         current += dt.timedelta(days=1)
 
     try:
