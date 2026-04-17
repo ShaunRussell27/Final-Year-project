@@ -119,7 +119,19 @@ async def _garmin_sync_loop() -> None:
         await _run_garmin_sync_once_safe()
 
     while True:
-        await asyncio.sleep(max(1, AUTO_SYNC_INTERVAL_MINUTES) * 60)
+        last_error = str(_garmin_sync_status.get("last_error") or "")
+        # OAuth exchange 429 means Garmin is rate-limiting token refreshes at the
+        # account level.  A 3-hour retry just hammers the same blocked endpoint.
+        # Back off 6 hours to let the rate-limit window clear.
+        if "oauth/exchange" in last_error.lower() and "429" in last_error:
+            backoff_seconds = 6 * 60 * 60
+            print(
+                "[Garmin Auto Sync] OAuth exchange rate-limited (429). "
+                "Backing off 6 hours before next attempt."
+            )
+        else:
+            backoff_seconds = max(1, AUTO_SYNC_INTERVAL_MINUTES) * 60
+        await asyncio.sleep(backoff_seconds)
         await _run_garmin_sync_once_safe()
 
 

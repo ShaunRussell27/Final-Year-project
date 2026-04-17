@@ -277,8 +277,21 @@ def run_sync() -> dict[str, Any]:
     # token exchange on every periodic sync run (which causes 429 rate limits).
     cache_key = f"{garmin_email}:{token_store}"
     if _garmin_client_cache is None or _garmin_client_cache_key != cache_key:
-        _garmin_client_cache = _get_client(garmin_email, garmin_password, token_store)
-        _garmin_client_cache_key = cache_key
+        try:
+            _garmin_client_cache = _get_client(garmin_email, garmin_password, token_store)
+            _garmin_client_cache_key = cache_key
+        except Exception as auth_exc:
+            # If the OAuth token exchange itself was rate-limited, bust the cache
+            # so the next run attempts a fresh client rather than reusing a broken one.
+            auth_reason = str(auth_exc)
+            if "oauth/exchange" in auth_reason.lower() and "429" in auth_reason:
+                _garmin_client_cache = None
+                _garmin_client_cache_key = ""
+                print(
+                    "[GARMIN AUTH] OAuth exchange rate-limited (429) during client "
+                    "initialisation. Client cache cleared. Sync aborted."
+                )
+            raise
     client = _garmin_client_cache
 
     end_date = dt.date.today()
