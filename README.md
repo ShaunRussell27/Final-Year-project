@@ -19,20 +19,28 @@ This repository contains an end-to-end burnout monitoring prototype that combine
   - Fetches `/risk/latest` and `/risk/notebook` after sync.
 
 - **Model services**: `backend/app/ml_service.py`
-  - **Primary backend model**: Isolation Forest artifact `backend/app/artifacts/burnout_iforest.joblib` used by `/risk/latest`.
-  - **Notebook model**: `notebooks/burnout_model.pkl` + `notebooks/scaler.pkl` used by `/risk/notebook`.
+  - **Primary model — Isolation Forest** (`BurnoutModelService`): artifact `backend/app/artifacts/burnout_iforest.joblib`, used by `/risk/latest`. Features: `sleep_ratio`, `resting_hr_delta`, `steps_ratio`, `avg_hr_delta` (all derived relative to a 30-day rolling baseline). Outputs a 0–100 risk score and a Low / Moderate / High label.
+  - **Notebook model — Logistic Regression** (`NotebookBurnoutModelService`): artifacts `notebooks/burnout_model.pkl` + `notebooks/scaler.pkl`, used by `/risk/notebook`. Features: `HR`, `RMSSD`, `SDRR`, `MEAN_RR`, `MEDIAN_RR`. Trained on the combined SWELL-WESAD HRV dataset (313,310 training rows). Target: Condition Label == 0 → stressed.
 
 - **Web dashboard**: `RussellShaun_webdashboard/`
   - Burnout tab supports watch-data mode and manual metric override.
   - Chatbot tab (`sections/chatbot.html`, `chatbot.js`) provides an AI coaching assistant powered by the `/chatbot/coach` endpoint, falling back to rule-based replies when no LLM key is configured.
+
+## Backend File Reference
+
+| File | Purpose |
+|---|---|
+| `backend/app/main.py` | FastAPI app, route definitions, auto-sync loop |
+| `backend/app/models.py` | SQLAlchemy ORM model (`DailySummary`) |
+| `backend/app/schemas.py` | Pydantic request/response schemas |
+| `backend/app/db.py` | Database engine and session setup |
+| `backend/app/ml_service.py` | Isolation Forest and notebook model service classes |
 
 ## Repository Layout
 
 - `backend/` FastAPI app, DB models, model service, sync script, training script
 - `notebooks/` notebook experiments and notebook model artifacts (`.pkl`)
 - `RussellShaun_webdashboard/` static dashboard UI
-- `data/` raw/processed datasets
-- `docs/` architecture and pipeline notes
 
 ## Quick Start (Local)
 
@@ -126,13 +134,28 @@ python backend/train_notebook_model.py
 
 If notebook files are missing, `/risk/notebook` returns a 503 and clients can fall back to `/risk/latest`.
 
-## Deployment Notes
+## Deployment
+
+| Component | Platform |
+|---|---|
+| FastAPI Backend | Railway (auto-deploy from GitHub) |
+| Database | Railway PostgreSQL plugin |
+| Web Dashboard | Static files (served locally or via any static host) |
+| Garmin Sync | Background task within the Railway backend process |
 
 - Root `Procfile` runs backend via:
   - `cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - Database:
   - Local fallback: SQLite (`sqlite:///./burnout.db`)
   - Hosted: Postgres via `DATABASE_URL` (auto-normalized to `postgresql://`)
+
+## Data Flow
+
+1. Garmin sync script pulls metrics from Garmin Connect and POSTs to `/ingest/healthkit`.
+2. Backend stores the daily summary in the database.
+3. On a `/risk/latest` request, the Isolation Forest model compares the latest summary against a 30-day rolling baseline and returns a risk score.
+4. On a `/risk/notebook` request, the notebook model runs HRV-based inference and returns a stress probability.
+5. The dashboard polls both endpoints and displays the results to the user.
 
 ## Running the Tests
 
