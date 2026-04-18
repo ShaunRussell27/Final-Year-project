@@ -1,10 +1,11 @@
 const app = document.getElementById('app');
 const tabBtns = document.querySelectorAll('.tab-btn');
+// Only these three tabs exist — anything else in the URL hash is ignored
 const validTabs = new Set(['home', 'burnout', 'chatbot']);
 
 let activeTab = null;
-let cleanupActiveSection = null;
-let chatbotScriptPromise = null;
+let cleanupActiveSection = null; // holds the teardown function returned by each section init
+let chatbotScriptPromise = null; // cached so chatbot.js is only injected once
 
 function setActiveTabButton(tabName) {
     tabBtns.forEach((btn) => {
@@ -33,10 +34,13 @@ function showSectionError(message) {
 }
 
 async function ensureChatbotScriptLoaded() {
+    // Already loaded on a previous visit to the chatbot tab
     if (window.initChatbot) {
         return;
     }
 
+    // Lazy-load chatbot.js only when the user actually clicks the chatbot tab
+    // — avoids loading it on every page visit
     if (!chatbotScriptPromise) {
         chatbotScriptPromise = new Promise((resolve, reject) => {
             const script = document.createElement('script');
@@ -60,6 +64,7 @@ async function activateSection(tabName) {
         return;
     }
 
+    // Tear down the previous section (e.g. clear timers) before replacing the DOM
     if (typeof cleanupActiveSection === 'function') {
         cleanupActiveSection();
         cleanupActiveSection = null;
@@ -105,6 +110,7 @@ window.addEventListener('hashchange', () => {
     }
 });
 
+// On first load, respect the URL hash (e.g. direct link to #burnout), otherwise default to home
 const initialTab = window.location.hash.replace('#', '');
 activateSection(validTabs.has(initialTab) ? initialTab : 'home');
 
@@ -254,7 +260,8 @@ function initBurnoutSection() {
         let syncUserId = null;
         let syncRisk = null;
 
-        // Fetch /sync/status FIRST so we know the user_id data was stored under.
+        // Fetch /sync/status first — it tells us the user_id that the last Garmin sync
+        // actually wrote data under, which may differ from what the user typed in the form
         // Without this, /summary/latest and /risk/latest would query the wrong user.
         try {
             const syncResponse = await fetch(`${backendUrl}/sync/status`);
@@ -266,6 +273,8 @@ function initBurnoutSection() {
                     ? syncData.sync.last_result.garmin_day_snapshots
                     : [];
 
+                // Walk backwards through snapshots to find the most recent day with valid HRV
+                // — Garmin doesn't always record HRV every day
                 const latestValidSnapshot = [...daySnapshots]
                     .reverse()
                     .find((day) => Number.isFinite(day?.hrv_avg) && day.hrv_avg > 0);
@@ -487,7 +496,7 @@ function initBurnoutSection() {
         const wBattery = selfReport?.watchBodyBattery;
         const coping = selfReport?.copingActivities || [];
 
-        // Acknowledge completed coping activities
+        // If the user logged coping activities, acknowledge them first — positive reinforcement
         if (coping.length > 0) {
             const labels = {
                 exercise: 'exercised',
@@ -567,7 +576,8 @@ function initBurnoutSection() {
             }
         }
 
-        // Suggest activities not yet done when risk is medium or high
+        // Only suggest activities the user hasn't already logged — avoids telling them to do
+        // something they've done
         if (riskLevel !== 'LOW' && coping.length < 3) {
             const suggestions = [];
             if (!coping.includes('exercise')) suggestions.push('a short workout or walk');

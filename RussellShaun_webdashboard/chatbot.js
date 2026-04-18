@@ -17,6 +17,7 @@ const defaultResponses = [
     'I am a wellness chatbot. I can provide advice on stress, sleep, exercise, and preventing burnout. What would you like to know?',
 ];
 
+// Simple keyword match — first hit wins, so more specific keys should come first
 function getBotResponse(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
 
@@ -26,6 +27,7 @@ function getBotResponse(userMessage) {
         }
     }
 
+    // Nothing matched — pick a random fallback prompt to keep the conversation going
     return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
 }
 
@@ -36,6 +38,9 @@ function normalizeBackendUrl(urlValue) {
     return urlValue.trim().replace(/\/$/, '');
 }
 
+// Call the Groq-powered /chatbot/coach endpoint on the backend.
+// Returns null if the backend URL/userId isn't set or the call fails,
+// so the caller can fall back to the local rule-based bot.
 async function getPersonalizedBotResponse(userMessage, userId, backendUrl, history) {
     if (!backendUrl || !userId) {
         return null;
@@ -80,6 +85,7 @@ window.initChatbot = function initChatbot() {
     const burnoutUserId = document.getElementById('user_id');
     const burnoutBackendUrl = document.getElementById('backend_url');
 
+    // Pre-fill chatbot fields from the burnout section so the user doesn't have to type them twice
     if (chatUserId && burnoutUserId?.value && !chatUserId.value.trim()) {
         chatUserId.value = burnoutUserId.value.trim();
     }

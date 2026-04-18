@@ -1,5 +1,7 @@
 # Final Year Project — Burnout Detection Platform
 
+**Shaun Russell | L00181248 | Computer Science | Atlantic TU**
+
 This repository contains an end-to-end burnout monitoring prototype that combines:
 - Garmin metric collection and sync
 - A FastAPI backend with risk endpoints
