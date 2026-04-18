@@ -42,15 +42,22 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(title="Burnout Project Backend", lifespan=_lifespan)
 
+# Restrict to the Live Server origin (VS Code) and localhost variants used during dev.
+# The Railway backend URL is also included for future frontend hosting.
+_ALLOWED_ORIGINS = os.getenv(
+    "CORS_ALLOWED_ORIGINS",
+    "http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:5501,http://localhost:5501",
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
-# Simple “migration”: create tables on startup (fine for FYP MVP)
+# Create tables on first startup — SQLite locally, PostgreSQL on Railway
 Base.metadata.create_all(bind=engine)
 model_service = BurnoutModelService()
 model_service.load()
@@ -71,8 +78,8 @@ def _int_env(name: str, default: int, minimum: int = 1) -> int:
 
 AUTO_SYNC_ENABLED = os.getenv("GARMIN_AUTO_SYNC_ENABLED", "false").lower() == "true"
 AUTO_SYNC_INTERVAL_MINUTES = _int_env("GARMIN_AUTO_SYNC_INTERVAL_MINUTES", 180, minimum=1)
-# Default to False — running on startup causes immediate hits to Garmin's
-# OAuth exchange endpoint on every Railway deploy, triggering 429 rate limits.
+# Disabled by default, running on every Railway deploy hammers Garmin's OAuth endpoint
+# and triggers 429 rate limits within a few hours
 AUTO_SYNC_RUN_ON_STARTUP = os.getenv("GARMIN_AUTO_SYNC_RUN_ON_STARTUP", "false").lower() == "true"
 
 _garmin_sync_task: asyncio.Task | None = None
@@ -159,8 +166,8 @@ def sync_status():
     }
 
 def upsert_daily_summary(db: Session, user_id: str, date: str, source: str, **fields):
-    # If there are existing records for this user+date, keep one canonical row.
-    # This gracefully handles accidental duplicates from earlier runs/races.
+    # One row per user per date  if something already exists, decide whether
+    # to overwrite based on source priority (garmin direct sync > healthkit)
     matches = (
         db.query(DailySummary)
         .filter(DailySummary.user_id == user_id, DailySummary.date == date)
@@ -203,6 +210,9 @@ def _avg(values: list[float | int | None]) -> float | None:
 
 
 def _compute_risk(latest: DailySummary, baseline_rows: list[DailySummary]) -> RiskOut:
+    """Rule-based fallback risk calculation used when the ML model isn't loaded.
+    Compares today's metrics directly against the 7-day baseline.
+    """
     baseline_sleep = _avg([r.sleep_minutes for r in baseline_rows])
     baseline_resting_hr = _avg([r.resting_hr for r in baseline_rows])
     baseline_steps = _avg([r.steps for r in baseline_rows])
@@ -346,6 +356,9 @@ def _call_groq_llm(
     system_prompt: str,
     history: list[dict] | None,
 ) -> str | None:
+    """Send the user's message to the Groq LLM with health context injected into the system prompt.
+    Returns None if the API key is missing or the call fails — the chatbot falls back to rules.
+    """
     if not _GROQ_AVAILABLE or not _GROQ_API_KEY:
         return None
     try:
@@ -549,7 +562,8 @@ def risk_latest(user_id: str, db: Session = Depends(get_db)):
 
     model_prediction = model_service.predict(latest, baseline_rows)
 
-    # If the record has HRV, also run the SWELL/WESAD notebook model and blend the scores
+    # If HRV is present, run the notebook (SWELL-WESAD) model alongside the
+    # Isolation Forest and blend both scores 50/50 for a more robust prediction
     notebook_prediction = None
     if latest.hrv_avg and latest.hrv_avg > 0:
         notebook_prediction = notebook_model_service.predict(

@@ -11,8 +11,8 @@ from .models import DailySummary
 
 @dataclass
 class ModelPrediction:
-    risk_score: int
-    risk_label: str
+    risk_score: int      # 0-100 burnout risk
+    risk_label: str      # "Low", "Medium", or "High"
     explanation: list[str]
 
 
@@ -20,22 +20,26 @@ class ModelPrediction:
 class NotebookModelPrediction:
     risk_score: int
     risk_label: str
-    confidence: float
+    confidence: float    # model's probability output (0.0 - 1.0)
     explanation: list[str]
 
 
+# Isolation Forest-based burnout detector trained on the user's own Garmin history.
+# It learns what "normal" looks like for this individual and flags anomalies.
 class BurnoutModelService:
     def __init__(self, artifact_path: Optional[str] = None):
         base_dir = os.path.dirname(__file__)
         self.artifact_path = artifact_path or os.path.join(base_dir, "artifacts", "burnout_iforest.joblib")
         self.model: Optional[IsolationForest] = None
+        # All features are expressed as ratios or deltas vs. the user's 7-day baseline
+        # so the model is person-agnostic and doesn't need separate per-user training
         self.feature_names: list[str] = [
-            "sleep_ratio",
-            "resting_hr_delta",
-            "steps_ratio",
-            "avg_hr_delta",
-            "body_battery_ratio",
-            "sleep_score_ratio",
+            "sleep_ratio",         # today's sleep / baseline sleep
+            "resting_hr_delta",    # bpm above/below baseline resting HR
+            "steps_ratio",         # today's steps / baseline steps
+            "avg_hr_delta",        # avg HR deviation
+            "body_battery_ratio",  # body battery vs baseline
+            "sleep_score_ratio",   # sleep quality score vs baseline
         ]
         self.score_min: Optional[float] = None
         self.score_max: Optional[float] = None
@@ -45,9 +49,11 @@ class BurnoutModelService:
         return self.model is not None
 
     def load(self) -> bool:
+        """Load the pre-trained Isolation Forest artifact from disk."""
         if not os.path.exists(self.artifact_path):
             return False
 
+        # The joblib file stores the model + the score range used for normalisation
         payload = joblib.load(self.artifact_path)
         self.model = payload.get("model")
         self.feature_names = payload.get("feature_names", self.feature_names)
@@ -56,11 +62,13 @@ class BurnoutModelService:
         return self.model is not None
 
     def predict(self, latest: DailySummary, baseline_rows: list[DailySummary]) -> Optional[ModelPrediction]:
+        """Run the Isolation Forest on today's metrics vs. the user's recent baseline."""
         if not self.is_ready:
             return None
 
         features, explanation = self._build_features_and_explanations(latest, baseline_rows)
         features_df = pd.DataFrame([features], columns=self.feature_names)
+        # decision_function returns negative scores for anomalies — lower = more anomalous
         score = float(self.model.decision_function(features_df)[0])
         risk_score = self._score_to_risk(score)
 
@@ -81,6 +89,7 @@ class BurnoutModelService:
         )
 
     def _avg(self, values: list[float | int | None]) -> Optional[float]:
+        """Helper — average a list that may contain None values."""
         numeric = [float(v) for v in values if v is not None]
         if not numeric:
             return None
@@ -91,6 +100,7 @@ class BurnoutModelService:
         latest: DailySummary,
         baseline_rows: list[DailySummary],
     ) -> tuple[list[float], list[str]]:
+        # Compute 7-day averages to use as the personal baseline
         baseline_sleep = self._avg([r.sleep_minutes for r in baseline_rows])
         baseline_resting_hr = self._avg([r.resting_hr for r in baseline_rows])
         baseline_steps = self._avg([r.steps for r in baseline_rows])
@@ -100,12 +110,15 @@ class BurnoutModelService:
 
         explanation: list[str] = []
 
+        # Ratios default to 1.0 (no deviation) when data is missing —
+        # keeps the feature vector valid even with partial records
         sleep_ratio = 1.0
         if latest.sleep_minutes is not None and baseline_sleep and baseline_sleep > 0:
             sleep_ratio = float(latest.sleep_minutes / baseline_sleep)
             if sleep_ratio < 0.85:
                 explanation.append("sleep is below 7-day baseline")
 
+        # Delta rather than ratio for HR — bpm difference is more intuitive to interpret
         resting_hr_delta = 0.0
         if latest.resting_hr is not None and baseline_resting_hr is not None:
             resting_hr_delta = float(latest.resting_hr - baseline_resting_hr)
@@ -134,12 +147,16 @@ class BurnoutModelService:
             if sleep_score_ratio < 0.85:
                 explanation.append("sleep quality score is below baseline")
 
+        # Order must match self.feature_names exactly — the model was trained with this column order
         features = [sleep_ratio, resting_hr_delta, steps_ratio, avg_hr_delta, body_battery_ratio, sleep_score_ratio]
         return features, explanation
 
     def _score_to_risk(self, score: float) -> int:
+        """Flip the Isolation Forest score into a 0-100 risk value.
+        The model returns higher scores for normal behaviour, so we invert it.
+        """
         if self.score_min is None or self.score_max is None or self.score_max == self.score_min:
-            return 50
+            return 50  # no calibration data yet — return a neutral midpoint
 
         normalized = (score - self.score_min) / (self.score_max - self.score_min)
         risk = (1.0 - normalized) * 100.0
@@ -147,6 +164,8 @@ class BurnoutModelService:
         return int(round(risk))
 
 
+# Logistic Regression model trained in burnout_model.ipynb on the SWELL-WESAD HRV dataset.
+# Uses heart rate variability features (RMSSD, SDRR, RR intervals) to classify stress state.
 class NotebookBurnoutModelService:
     def __init__(self, model_path: Optional[str] = None, scaler_path: Optional[str] = None):
         base_dir = os.path.dirname(__file__)
@@ -159,6 +178,7 @@ class NotebookBurnoutModelService:
 
         self.model = None
         self.scaler = None
+        # HRV features the notebook model was trained on (SWELL-WESAD naming convention)
         self.feature_names = ["HR", "RMSSD", "SDRR", "MEAN_RR", "MEDIAN_RR"]
 
     @property
@@ -166,6 +186,7 @@ class NotebookBurnoutModelService:
         return self.model is not None and self.scaler is not None
 
     def load(self) -> bool:
+        """Load the notebook model and its StandardScaler from notebooks/."""
         if not os.path.exists(self.model_path) or not os.path.exists(self.scaler_path):
             return False
 
