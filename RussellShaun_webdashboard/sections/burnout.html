@@ -1,6 +1,6 @@
 <div class="form-section">
-    <h2>Get Burnout Summary (Notebook AI Model via FastAPI)</h2>
-    <p>Uses notebook model files: <strong>burnout_model.pkl</strong> + <strong>scaler.pkl</strong>.</p>
+    <h2>Burnout Risk Assessment</h2>
+    <p class="help-text">Analyse your biometric data to assess your current burnout risk level.</p>
     <div id="burnoutForm">
         <div class="burnout-grid">
             <div class="form-group">
@@ -8,16 +8,13 @@
                 <input type="text" id="user_id" value="shaun" required>
             </div>
 
-            <div class="form-group">
-                <label for="backend_url">Backend URL:</label>
-                <input type="text" id="backend_url" value="https://final-year-project-production-1acf.up.railway.app" required>
-            </div>
+            <input type="hidden" id="backend_url" value="https://final-year-project-production-1acf.up.railway.app">
 
             <div class="form-group full-width">
                 <label for="metrics_source">Metrics Source:</label>
                 <select id="metrics_source" class="select-input">
-                    <option value="watch" selected>Use latest watch data (recommended)</option>
-                    <option value="manual">Enter metrics manually</option>
+                    <option value="watch" selected>Use latest Garmin data (recommended)</option>
+                    <option value="manual">Enter my own values</option>
                 </select>
                 <span class="help-text">Watch mode auto-reads values from your backend sync; manual mode lets you override.</span>
             </div>
