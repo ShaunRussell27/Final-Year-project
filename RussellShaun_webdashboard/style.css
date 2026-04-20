@@ -686,12 +686,7 @@ input[type="range"] {
     font-weight: 600;
 }
 
-/* When Garmin watch stress overrides the manual slider */
-.watch-data-available input[type="range"] {
-    opacity: 0.35;
-    pointer-events: none;
-}
-
+/* When Garmin watch stress is available — slider stays interactive, note is shown */
 .watch-data-available .watch-override-note {
     display: block !important;
     color: #764ba2;
