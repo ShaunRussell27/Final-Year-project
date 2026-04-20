@@ -164,7 +164,7 @@ class BurnoutModelService:
         return int(round(risk))
 
 
-# Logistic Regression model trained in burnout_model.ipynb on the SWELL-WESAD HRV dataset.
+# Random Forest classifier trained in burnout_model.ipynb on the SWELL-WESAD HRV dataset.
 # Uses heart rate variability features (RMSSD, SDRR, RR intervals) to classify stress state.
 class NotebookBurnoutModelService:
     def __init__(self, model_path: Optional[str] = None, scaler_path: Optional[str] = None):
