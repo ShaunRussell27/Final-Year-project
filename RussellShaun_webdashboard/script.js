@@ -259,6 +259,7 @@ function initBurnoutSection() {
         // (BURNOUT_USER_ID env var or Garmin email prefix)
         let syncUserId = null;
         let syncRisk = null;
+        let syncEnabled = false;
 
         // Fetch /sync/status first — it tells us the user_id that the last Garmin sync
         // actually wrote data under, which may differ from what the user typed in the form
@@ -307,6 +308,9 @@ function initBurnoutSection() {
                 if (Number.isFinite(latestDayData?.steps)) { steps = latestDayData.steps; }
                 if (Number.isFinite(latestDayData?.sleep_minutes)) { sleepMinutes = latestDayData.sleep_minutes; }
                 if (Number.isFinite(latestDayData?.avg_hr)) { avgHr = latestDayData.avg_hr; }
+                // Cache whether sync is currently enabled on the server
+                syncEnabled = !!syncData?.sync?.enabled;
+
                 // Cache the risk result from the last sync run — used as fallback when DB is empty
                 const rawSyncRisk = syncData?.sync?.last_result?.latest_risk;
                 if (rawSyncRisk && Number.isFinite(rawSyncRisk.risk_score)) {
@@ -364,6 +368,7 @@ function initBurnoutSection() {
         const resolved = {
             syncUserId,
             syncRisk,
+            syncEnabled,
             restingHr: Number.isFinite(restingHr) ? restingHr : null,
             hrvAvg: Number.isFinite(hrvAvg) ? hrvAvg : null,
             dataDate: dataDate || summaryDate || null,
@@ -507,7 +512,7 @@ function initBurnoutSection() {
                 nap: 'taken a rest / nap',
             };
             const done = coping.map((c) => labels[c] || c).join(', ');
-            html += `<li>✅ Great work — you've already ${done} today. These activities actively help reduce stress and burnout.</li>`;
+            html += `<li>Great work — you've already ${done} today. These activities actively help reduce stress and burnout.</li>`;
         }
 
         if (sleepMinutes > 0 && sleepMinutes < 420) {
@@ -528,15 +533,15 @@ function initBurnoutSection() {
 
         if (Number.isFinite(wStress) && wStress >= 75) {
             if (coping.includes('meditation') || coping.includes('music') || coping.includes('outdoors')) {
-                html += '<li>Your Garmin stress score is very high, but your coping activities today are helping. Keep it up and avoid any additional stressors this evening.</li>';
+                html += '<li>Your stress score is very high, but your coping activities today are helping. Keep it up and avoid any additional stressors this evening.</li>';
             } else {
-                html += '<li>Your Garmin stress score is very high. Schedule at least one 10-minute rest block today and avoid additional stressors.</li>';
+                html += '<li>Your stress score is very high. Schedule at least one 10-minute rest block today and avoid additional stressors.</li>';
             }
         } else if (Number.isFinite(wStress) && wStress >= 60) {
             if (coping.includes('meditation') || coping.includes('music')) {
-                html += '<li>Garmin stress is elevated but your wind-down activities are helping — keep going with them.</li>';
+                html += '<li>Stress is elevated but your wind-down activities are helping — keep going with them.</li>';
             } else {
-                html += '<li>Your Garmin stress score is elevated. Short breathing exercises and a lighter afternoon schedule can help.</li>';
+                html += '<li>Your stress score is elevated. Short breathing exercises and a lighter afternoon schedule can help.</li>';
             }
         } else if (Number.isFinite(wBattery) && wBattery <= 20) {
             html += '<li>Body battery is critically low — avoid intense workouts and prioritise sleep tonight.</li>';
@@ -589,10 +594,6 @@ function initBurnoutSection() {
             }
         }
 
-        if (Array.isArray(riskResult?.explanation) && riskResult.explanation.length) {
-            html += `<li>Model factors: ${riskResult.explanation.join('; ')}</li>`;
-        }
-
         if (riskLevel === 'HIGH') {
             html += '<li>Consider speaking with a mental health professional</li>';
         }
@@ -635,9 +636,6 @@ function initBurnoutSection() {
             icon = '[HIGH]';
         }
 
-        const confidenceSuffix = Number.isFinite(riskResult?.confidence)
-            ? `<br><small>Model confidence: ${Number(riskResult.confidence).toFixed(2)}%</small>`
-            : '';
         const assessedDate = riskResult?.date || summaryResult?.date || null;
         const assessedDateSuffix = assessedDate
             ? `<br><small>Data date assessed: ${assessedDate}</small>`
@@ -660,7 +658,7 @@ function initBurnoutSection() {
             : '';
 
         resultBox.className = `result-box ${riskClass}`;
-        resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${confidenceSuffix}${assessedDateSuffix}${watchBioSuffix}${topDriversSuffix}`;
+        resultBox.innerHTML = `${icon} <br> Burnout Risk: <strong>${riskLevel}</strong> (${Number(riskScore).toFixed(1)}%)${assessedDateSuffix}${watchBioSuffix}${topDriversSuffix}`;
         recommendationsBox.innerHTML = getRecommendations(riskResult, summaryResult, riskLevel, selfReport);
     }
 
@@ -728,6 +726,21 @@ function initBurnoutSection() {
             watchAvgStress = watchMetrics.avgStress ?? null;
             watchBodyBattery = watchMetrics.bodyBatteryMax ?? null;
             watchSleepScore = watchMetrics.sleepScore ?? null;
+
+            // Block analysis if Garmin data is not from today — stale results are misleading
+            const todayStr = new Date().toISOString().slice(0, 10);
+            if (watchDataDate && watchDataDate !== todayStr) {
+                const syncOff = !watchMetrics.syncEnabled;
+                const hint = syncOff
+                    ? 'Garmin auto-sync is disabled on the server.'
+                    : 'Garmin sync has not run today yet.';
+                throw new Error(
+                    `Watch data is from ${watchDataDate}, not today. ${hint} Run a sync to update your metrics, or switch to Manual mode.`
+                );
+            }
+            if (!watchDataDate) {
+                throw new Error('No Garmin data found. Run a sync first, or switch to Manual mode.');
+            }
 
             // If watch provides stress, auto-hide the manual stress slider
             const stressRow = document.getElementById('perceived_stress')?.closest('.form-group');
@@ -876,6 +889,17 @@ function initBurnoutSection() {
 
             displayResults(riskResult, summaryResult, { perceivedStress, workHours, moodScore, copingActivities, watchAvgStress: effectiveAvgStress, watchBodyBattery: effectiveBodyBattery, watchSleepScore: effectiveSleepScore });
             setStatus('done');
+
+            // Clear manual input fields after prediction so they don't bleed into watch mode
+            if (metricSource === 'manual') {
+                ['hrv_avg', 'resting_hr', 'manual_avg_hr', 'manual_steps',
+                 'manual_sleep_hours', 'manual_avg_stress', 'manual_body_battery', 'manual_sleep_score'
+                ].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = '';
+                });
+            }
+
             await refreshSyncStatus();
         } catch (error) {
             console.error('Error:', error);
@@ -903,6 +927,13 @@ function initBurnoutSection() {
     if (metricsSourceSelect) {
         metricsSourceSelect.addEventListener('change', async () => {
             setManualMetricsVisibility();
+
+            // Clear previous result when switching modes so stale predictions don't persist
+            const resultBox = document.getElementById('resultBox');
+            const recommendationsBox = document.getElementById('recommendations');
+            if (resultBox) { resultBox.className = 'result-box'; resultBox.innerHTML = ''; }
+            if (recommendationsBox) { recommendationsBox.innerHTML = ''; }
+
             if (metricsSourceSelect.value === 'manual') {
                 await prefillManualMetricsFromWatch();
             }
