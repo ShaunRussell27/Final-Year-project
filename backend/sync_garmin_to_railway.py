@@ -6,9 +6,22 @@ from pathlib import Path
 from typing import Any
 
 
+
+
 import requests
 from dotenv import load_dotenv
-from garminconnect import Garmin
+from garmin_health_data.garmin_client import GarminClient
+from garmin_health_data.garmin_client.api import (
+    get_steps_data,
+    get_heart_rates,
+    get_sleep_data,
+    get_stress_data,
+    get_training_readiness,
+    get_training_status,
+    get_intensity_minutes_data,
+    get_floors,
+    get_respiration_data,
+)
 
 
 load_dotenv()
@@ -16,7 +29,7 @@ load_dotenv()
 # Cached Garmin client — reused across sync runs to avoid the OAuth token
 # exchange (oauth/exchange/user/2.0) being called every 3 hours, which
 # triggers Garmin's rate limiter (429).
-_garmin_client_cache: Garmin | None = None
+_garmin_client_cache = None
 _garmin_client_cache_key: str = ""
 
 
@@ -86,7 +99,7 @@ def _read_token_to_json(token_path: str) -> str | None:
 
 
 # New: Use garminconnect>=0.3.3 token logic
-def _get_client(email: str, password: str, token_store: str) -> Garmin:
+def _get_client(email: str, password: str, token_store: str):
     token_path = str(Path(token_store).expanduser())
     token_parent = str(Path(token_path).expanduser().parent)
     os.makedirs(token_parent, exist_ok=True)
@@ -95,26 +108,14 @@ def _get_client(email: str, password: str, token_store: str) -> Garmin:
     _write_token_from_env(token_path)
 
     # Try to load token file
-    import garth
-    client = None
-    token_loaded = False
+    # Try to load from token first
     try:
-        client = Garmin()
-        # Ensure garth attribute exists (for older/newer garminconnect versions)
-        if not hasattr(client, "garth") or client.garth is None:
-            client.garth = garth.Client(domain="garmin.com")
-        client.garth.load(token_path)
-        token_loaded = True
+        client = GarminClient.from_tokens(token_path)
     except Exception:
-        pass
-
-    if not token_loaded:
         # No valid token, perform login and save token
-        client = Garmin(email, password)
-        if not hasattr(client, "garth") or client.garth is None:
-            client.garth = garth.Client(domain="garmin.com")
-        client.login()
-        client.garth.dump(token_path)
+        client = GarminClient()
+        client.login(email, password)
+        client.dump(token_path)
         # Print the new token so the user can set GARMIN_TOKEN_JSON on Railway
         token_json = _read_token_to_json(token_path)
         if token_json:
@@ -155,21 +156,30 @@ def _garmin_call_with_retry(fn: Any, *args: Any, max_retries: int = 3) -> Any:
                 raise
 
 
-def _collect_day(client: Garmin, date_str: str) -> dict[str, Any]:
-    stats = _garmin_call_with_retry(client.get_stats, date_str)
-    hrv_data = _garmin_call_with_retry(client.get_hrv_data, date_str)
-    sleep_data = _garmin_call_with_retry(client.get_sleep_data, date_str)
+def _collect_day(client, date_str: str) -> dict[str, Any]:
+    # Use garmin-health-data API methods
+    steps_data = _garmin_call_with_retry(get_steps_data, client, date_str)
+    hrv_data = _garmin_call_with_retry(get_heart_rates, client, date_str)
+    sleep_data = _garmin_call_with_retry(get_sleep_data, client, date_str)
+    stress_data = _garmin_call_with_retry(get_stress_data, client, date_str)
 
-    total_steps = _safe_get(stats, "totalSteps")
-    resting_hr = _safe_get(stats, "restingHeartRate")
+    # Steps: list of dicts, get total steps from first entry if present
+    total_steps = steps_data[0].get("steps") if steps_data and isinstance(steps_data, list) and len(steps_data) > 0 else None
+    # HRV/Heart rate: dict
+    resting_hr = hrv_data.get("restingHeartRate") if hrv_data else None
+    hrv_avg = hrv_data.get("hrvSummary", {}).get("lastNightAvg") if hrv_data else None
 
-    sleep_seconds = _safe_get(sleep_data, "dailySleepDTO", "sleepTimeSeconds")
+    # Sleep: dict
+    sleep_dto = sleep_data.get("dailySleepDTO", {}) if sleep_data else {}
+    sleep_seconds = sleep_dto.get("sleepTimeSeconds")
     sleep_minutes = int(sleep_seconds / 60) if isinstance(sleep_seconds, (int, float)) else None
+    avg_sleep_hr = sleep_dto.get("avgSleepHeartRate")
+    sleep_score = sleep_dto.get("sleepScore")
 
-    avg_sleep_hr = _safe_get(sleep_data, "dailySleepDTO", "avgSleepHeartRate")
-    sleep_score = _safe_get(sleep_data, "dailySleepDTO", "sleepScore")
-
-    hrv_avg = _safe_get(hrv_data, "hrvSummary", "lastNightAvg")
+    # Stress: dict
+    avg_stress = stress_data.get("averageStressLevel") if stress_data else None
+    max_stress = stress_data.get("maxStressLevel") if stress_data else None
+    body_battery_max = stress_data.get("bodyBatteryHighestValue") if stress_data else None
 
     return {
         "date": date_str,
@@ -178,9 +188,9 @@ def _collect_day(client: Garmin, date_str: str) -> dict[str, Any]:
         "resting_hr": resting_hr,
         "avg_hr": avg_sleep_hr,
         "hrv_avg": hrv_avg,
-        "avg_stress": _safe_get(stats, "averageStressLevel"),
-        "max_stress": _safe_get(stats, "maxStressLevel"),
-        "body_battery_max": _safe_get(stats, "bodyBatteryHighestValue"),
+        "avg_stress": avg_stress,
+        "max_stress": max_stress,
+        "body_battery_max": body_battery_max,
         "sleep_score": sleep_score,
     }
 
