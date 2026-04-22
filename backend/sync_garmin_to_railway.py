@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+
 import requests
 from dotenv import load_dotenv
 from garminconnect import Garmin
@@ -59,72 +60,62 @@ def _get_api_base_url() -> str:
     )
 
 
+
+# New: Write the unified garminconnect token file from GARMIN_TOKEN_JSON env var
 def _write_token_from_env(token_path: str) -> bool:
-    """Restore garth token files from GARMIN_TOKEN_JSON env var (survives Railway restarts)."""
     token_json_env = os.getenv("GARMIN_TOKEN_JSON", "").strip()
     if not token_json_env:
         return False
     try:
-        token_data: dict[str, str] = json.loads(token_json_env)
-        os.makedirs(token_path, exist_ok=True)
-        for filename, contents in token_data.items():
-            with open(os.path.join(token_path, filename), "w", encoding="utf-8") as f:
-                f.write(contents)
+        with open(token_path, "w", encoding="utf-8") as f:
+            f.write(token_json_env)
         return True
     except Exception:
         return False
 
 
+
+# New: Read the unified garminconnect token file as a JSON string for Railway
 def _read_token_to_json(token_path: str) -> str | None:
-    """Serialize garth token directory to a JSON string for storage as an env var."""
     try:
-        token_data: dict[str, str] = {}
-        for fname in os.listdir(token_path):
-            fpath = os.path.join(token_path, fname)
-            if os.path.isfile(fpath):
-                with open(fpath, encoding="utf-8") as f:
-                    token_data[fname] = f.read()
-        return json.dumps(token_data)
+        with open(token_path, encoding="utf-8") as f:
+            return f.read()
     except Exception:
         return None
 
 
-def _get_client(email: str, password: str, token_store: str) -> Garmin:
-    client = Garmin(email, password)
 
+# New: Use garminconnect>=0.3.3 token logic
+def _get_client(email: str, password: str, token_store: str) -> Garmin:
     token_path = str(Path(token_store).expanduser())
     token_parent = str(Path(token_path).expanduser().parent)
     os.makedirs(token_parent, exist_ok=True)
 
-    # Railway filesystems are ephemeral — restore token from env var if available
-    # so we don't have to call login() on every container restart.
+    # Restore token from env var if present
     _write_token_from_env(token_path)
 
+    # Try to load token file
+    import garth
+    client = None
     token_loaded = False
-    # garth>=0.4 uses .load(); older versions used .resume() — try both
-    for load_method_name in ("load", "resume"):
-        load_fn = getattr(client.garth, load_method_name, None)
-        if load_fn is None:
-            continue
-        try:
-            load_fn(token_path)
-            token_loaded = True
-            break
-        except Exception:
-            pass
+    try:
+        client = Garmin()
+        # Ensure garth attribute exists (for older/newer garminconnect versions)
+        if not hasattr(client, "garth") or client.garth is None:
+            client.garth = garth.Client(domain="garmin.com")
+        client.garth.load(token_path)
+        token_loaded = True
+    except Exception:
+        pass
 
     if not token_loaded:
+        # No valid token, perform login and save token
+        client = Garmin(email, password)
+        if not hasattr(client, "garth") or client.garth is None:
+            client.garth = garth.Client(domain="garmin.com")
         client.login()
-        # Save token to disk
-        for dump_method_name in ("dump",):
-            dump_fn = getattr(client.garth, dump_method_name, None)
-            if dump_fn:
-                try:
-                    dump_fn(token_path)
-                except Exception:
-                    pass
+        client.garth.dump(token_path)
         # Print the new token so the user can set GARMIN_TOKEN_JSON on Railway
-        # to prevent rate-limit (429) errors on future restarts.
         token_json = _read_token_to_json(token_path)
         if token_json:
             print(
@@ -133,22 +124,6 @@ def _get_client(email: str, password: str, token_store: str) -> Garmin:
                 "environment variable in your Railway service settings:\n"
                 f"{token_json}\n"
             )
-    else:
-        # When loading from saved tokens, garminconnect never sets display_name
-        # (it's only populated during login()). Without it every API call goes to
-        # /usersummary/daily/None which returns 403.  Fetch the social profile to
-        # populate it now.
-        # NOTE: if this raises (e.g. 429 rate limit), let the exception propagate
-        # so the sync fails cleanly rather than proceeding with display_name=None.
-        profile = client.connectapi("/userprofile-service/socialProfile")
-        if isinstance(profile, dict):
-            client.display_name = profile.get("displayName") or profile.get("userName")
-        if not client.display_name:
-            raise RuntimeError(
-                "Could not resolve Garmin display_name from saved token. "
-                "Sync aborted to avoid API calls to /daily/None."
-            )
-
     return client
 
 
@@ -264,9 +239,11 @@ def run_sync() -> dict[str, Any]:
     api_base_url = _get_api_base_url()
     user_id = os.getenv("BURNOUT_USER_ID")
 
+
     garmin_email = _get_required_env("GARMIN_EMAIL")
     garmin_password = _get_required_env("GARMIN_PASSWORD")
-    token_store = (os.getenv("GARMIN_TOKEN_STORE") or "").strip() or "~/.garth"
+    # Use new default token file name
+    token_store = (os.getenv("GARMIN_TOKEN_STORE") or "").strip() or "~/.garminconnect/garmin_tokens.json"
 
     if not user_id:
         user_id = garmin_email.split("@")[0]
@@ -346,26 +323,22 @@ def run_sync() -> dict[str, Any]:
         except Exception as exc:
             notebook_risk_error = str(exc)
 
-    # After a successful sync, persist the fresh garth token back to disk.
-    # garth updates the in-memory token during exchange but doesn't auto-save it,
-    # so we dump it here and print it for the user to update GARMIN_TOKEN_JSON on
-    # Railway — keeping it fresh across container restarts and avoiding future 429s.
+
+    # After a successful sync, persist the fresh token and print for Railway
     if ingested > 0:
         try:
             token_path_expanded = str(Path(token_store).expanduser())
-            dump_fn = getattr(client.garth, "dump", None)
-            if dump_fn:
-                dump_fn(token_path_expanded)
-                fresh_token_json = _read_token_to_json(token_path_expanded)
-                if fresh_token_json:
-                    print(
-                        "\n[GARMIN TOKEN — ACTION REQUIRED] "
-                        "Garmin data was synced successfully. "
-                        "Copy the value below and save it as the GARMIN_TOKEN_JSON "
-                        "environment variable in Railway to prevent 429 rate-limit "
-                        "errors on future container restarts:\n"
-                        f"{fresh_token_json}\n"
-                    )
+            client.garth.dump(token_path_expanded)
+            fresh_token_json = _read_token_to_json(token_path_expanded)
+            if fresh_token_json:
+                print(
+                    "\n[GARMIN TOKEN — ACTION REQUIRED] "
+                    "Garmin data was synced successfully. "
+                    "Copy the value below and save it as the GARMIN_TOKEN_JSON "
+                    "environment variable in Railway to prevent 429 rate-limit "
+                    "errors on future container restarts:\n"
+                    f"{fresh_token_json}\n"
+                )
         except Exception:
             pass
 
