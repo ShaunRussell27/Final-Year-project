@@ -296,6 +296,7 @@ def run_sync() -> dict[str, Any]:
         try:
             day_data = _collect_day(client, date_str)
             payload = _to_ingest_payload(user_id, day_data)
+            print("[DEBUG] Posting payload to /ingest/healthkit:", json.dumps(payload, indent=2))
             _request_json("POST", f"{api_base_url}/ingest/healthkit", json=payload)
             ingested += 1
             latest_day_data = day_data
