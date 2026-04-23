@@ -116,7 +116,7 @@ def _get_client(email: str, password: str, token_store: str):
         client = GarminClient()
         client.login(email, password)
         client.dump(token_path)
-        # Print the new token so the user can set GARMIN_TOKEN_JSON on Railway
+        # Print the new token so we can set GARMIN_TOKEN_JSON on Railway
         token_json = _read_token_to_json(token_path)
         if token_json:
             print(

@@ -700,6 +700,7 @@ function initBurnoutSection() {
             return;
         }
 
+
         let restingHr = metricSource === 'manual' && Number.isFinite(manualRestingHr)
             ? manualRestingHr
             : null;
@@ -776,6 +777,7 @@ function initBurnoutSection() {
             const today = new Date().toISOString().slice(0, 10);
             const analysisDate = metricSource === 'watch' ? watchDataDate : today;
 
+
             if (metricSource === 'manual') {
                 setStatus('sending ingest');
                 const ingestPayload = {
@@ -804,6 +806,7 @@ function initBurnoutSection() {
             }
 
             setStatus('requesting risk score');
+
             // In manual mode, manually-entered stress/battery take priority over watch values
             const effectiveAvgStress = metricSource === 'manual' && Number.isFinite(manualAvgStress)
                 ? manualAvgStress
@@ -814,6 +817,12 @@ function initBurnoutSection() {
             const effectiveSleepScore = metricSource === 'manual' && Number.isFinite(manualSleepScore)
                 ? manualSleepScore
                 : watchSleepScore;
+
+            // Always collect self-report fields for notebook model
+            const effectivePerceivedStress = Number.isFinite(perceivedStress) && perceivedStress >= 0 ? perceivedStress : null;
+            const effectiveWorkHours = Number.isFinite(workHours) && workHours >= 0 ? workHours : null;
+            const effectiveMoodScore = moodScore;
+            const effectiveCopingActivities = copingActivities.length > 0 ? copingActivities : null;
 
             let riskResult;
 
@@ -838,6 +847,7 @@ function initBurnoutSection() {
                     }
                 }
             } else {
+                // Always send self-report fields to notebook model, even in watch mode
                 const notebookPayload = {
                     user_id: watchUserId,
                     date: analysisDate,
@@ -846,10 +856,10 @@ function initBurnoutSection() {
                     hrv_avg: hrvAvg,
                     avg_stress: Number.isFinite(effectiveAvgStress) ? effectiveAvgStress : null,
                     body_battery_max: Number.isFinite(effectiveBodyBattery) ? effectiveBodyBattery : null,
-                    perceived_stress: Number.isFinite(perceivedStress) && perceivedStress >= 0 ? perceivedStress : null,
-                    work_hours: Number.isFinite(workHours) && workHours >= 0 ? workHours : null,
-                    mood_score: moodScore,
-                    coping_activities: copingActivities.length > 0 ? copingActivities : null,
+                    perceived_stress: effectivePerceivedStress,
+                    work_hours: effectiveWorkHours,
+                    mood_score: effectiveMoodScore,
+                    coping_activities: effectiveCopingActivities,
                 };
 
                 const riskResponse = await fetch(`${backendUrl}/risk/notebook`, {
