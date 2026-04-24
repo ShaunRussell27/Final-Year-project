@@ -44,7 +44,31 @@ This repository contains an end-to-end burnout monitoring prototype that combine
 - `notebooks/` notebook experiments and notebook model artifacts (`.pkl`)
 - `RussellShaun_webdashboard/` static dashboard UI
 
+
 ## Quick Start (Local)
+
+### Garmin API Setup (Required)
+
+This project now uses the **garmin-health-data** library for all Garmin data collection. You must install and configure this library to sync your Garmin data.
+
+#### 1) Install garmin-health-data
+
+```bash
+pip install garmin-health-data
+```
+
+#### 2) Authentication
+
+- You will need your Garmin account credentials (email and password) as environment variables:
+  - `GARMIN_EMAIL`
+  - `GARMIN_PASSWORD`
+- The sync script will handle OAuth and token management automatically.
+- If you are deploying to Railway, set these as environment variables in your Railway project.
+
+#### 3) Remove old garminconnect/garth references
+
+If you previously used `garminconnect` or `garth`, you no longer need to install or configure them. All sync logic is now handled by `garmin-health-data`.
+
 
 ### 1) Create and activate virtual environment
 
@@ -52,6 +76,7 @@ This repository contains an end-to-end burnout monitoring prototype that combine
 python -m venv .venv
 .venv\Scripts\activate
 ```
+
 
 ### 2) Install dependencies
 
@@ -95,25 +120,29 @@ The `/chatbot/coach` endpoint accepts a `user_id`, a `message`, and an optional 
 
 The dashboard chatbot UI (`sections/chatbot.html`) calls this endpoint and displays the reply inline.
 
+
 ## Garmin Sync Configuration
 
-Used by `backend/sync_garmin_to_railway.py` and startup auto-sync:
+The sync script (`backend/sync_garmin_to_railway.py`) uses **garmin-health-data** to collect your Garmin metrics. You must set the following environment variables:
+
 
 - `GARMIN_EMAIL` (required)
 - `GARMIN_PASSWORD` (required)
 - `BURNOUT_API_BASE_URL` (or `RAILWAY_PUBLIC_DOMAIN`)
 - `BURNOUT_USER_ID` (optional; defaults to email prefix)
 - `GARMIN_DAYS_BACK` (default `7`)
-- `GARMIN_TOKEN_STORE` (default `~/.garth`)
-- `GARMIN_AUTO_SYNC_ENABLED` (`true`/`false`, default `false`)
+- `GARMIN_AUTO_SYNC_ENABLED` (`true`/`false`, default `true`)
 - `GARMIN_AUTO_SYNC_INTERVAL_MINUTES` (default `180`)
 - `GARMIN_AUTO_SYNC_RUN_ON_STARTUP` (default `true`)
+
 
 Run manual sync:
 
 ```bash
 python backend/sync_garmin_to_railway.py
 ```
+
+This will use garmin-health-data to fetch your latest Garmin metrics and post them to the backend API.
 
 ## Model Training Notes
 
